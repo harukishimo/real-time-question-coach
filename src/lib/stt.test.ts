@@ -51,14 +51,12 @@ describe("STT token provider contract", () => {
     });
   });
 
-  it("does not expose provider master secret and maps client secret into token response", async () => {
+  it("does not expose provider master secret and maps top-level OpenAI client secret into token response", async () => {
     const fetcher = vi.fn(async () =>
       new Response(
         JSON.stringify({
-          client_secret: {
-            value: "ephemeral-client-secret",
-            expires_at: 123
-          }
+          value: "ephemeral-client-secret",
+          expires_at: 123
         }),
         { status: 200 }
       )
@@ -98,6 +96,7 @@ describe("STT token provider contract", () => {
       stt: {
         provider: "openai",
         token: "ephemeral-client-secret",
+        ttlSeconds: 122,
         boundUserId: "user-001",
         connectionType: "webrtc",
         realtimeUrl: "https://api.openai.com/v1/realtime/calls"
@@ -106,14 +105,44 @@ describe("STT token provider contract", () => {
     expect(JSON.stringify(result)).not.toContain("server-master-secret");
   });
 
-  it("uses provider expiry to cap token ttl and rejects expired or oversized ttl", async () => {
-    const validFetcher = vi.fn(async () =>
+  it("keeps compatibility with nested OpenAI client secret responses", async () => {
+    const fetcher = vi.fn(async () =>
       new Response(
         JSON.stringify({
           client_secret: {
-            value: "ephemeral-client-secret",
-            expires_at: 1_120
+            value: "nested-ephemeral-client-secret",
+            expires_at: 123
           }
+        }),
+        { status: 200 }
+      )
+    );
+
+    const result = await getSttAdapter("openai").createToken({
+      audioSource: "microphone",
+      sessionId: "session-12345",
+      user,
+      apiKey: "server-master-secret",
+      fetcher: fetcher as unknown as typeof fetch,
+      now: 1_000
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      stt: {
+        provider: "openai",
+        token: "nested-ephemeral-client-secret",
+        ttlSeconds: 122
+      }
+    });
+  });
+
+  it("uses provider expiry to cap token ttl and rejects expired ttl", async () => {
+    const validFetcher = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          value: "ephemeral-client-secret",
+          expires_at: 1_120
         }),
         { status: 200 }
       )
@@ -121,10 +150,8 @@ describe("STT token provider contract", () => {
     const expiredFetcher = vi.fn(async () =>
       new Response(
         JSON.stringify({
-          client_secret: {
-            value: "expired-client-secret",
-            expires_at: 999
-          }
+          value: "expired-client-secret",
+          expires_at: 999
         }),
         { status: 200 }
       )
@@ -132,10 +159,8 @@ describe("STT token provider contract", () => {
     const oversizedFetcher = vi.fn(async () =>
       new Response(
         JSON.stringify({
-          client_secret: {
-            value: "long-client-secret",
-            expires_at: 2_000
-          }
+          value: "long-client-secret",
+          expires_at: 2_000
         }),
         { status: 200 }
       )
@@ -179,9 +204,37 @@ describe("STT token provider contract", () => {
       }
     });
     expect(oversized).toMatchObject({
-      ok: false,
-      diagnostic: {
-        code: "schema_mismatch"
+      ok: true,
+      stt: {
+        ttlSeconds: 300
+      }
+    });
+  });
+
+  it("uses the local short-lived ttl cap when OpenAI omits expires_at", async () => {
+    const fetcher = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          value: "ephemeral-client-secret-without-expiry"
+        }),
+        { status: 200 }
+      )
+    );
+
+    const result = await getSttAdapter("openai").createToken({
+      audioSource: "microphone",
+      sessionId: "session-12345",
+      user,
+      apiKey: "server-master-secret",
+      fetcher: fetcher as unknown as typeof fetch,
+      now: 1_000
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      stt: {
+        token: "ephemeral-client-secret-without-expiry",
+        ttlSeconds: 300
       }
     });
   });
@@ -190,10 +243,8 @@ describe("STT token provider contract", () => {
     const fetcher = vi.fn(async () =>
       new Response(
         JSON.stringify({
-          client_secret: {
-            value: 123,
-            expires_at: "soon"
-          }
+          value: 123,
+          expires_at: "soon"
         }),
         { status: 200 }
       )

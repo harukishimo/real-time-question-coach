@@ -81,6 +81,59 @@ function mockToken(input: {
   };
 }
 
+function readObject(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+}
+
+function parseOpenAiClientSecret(input: {
+  data: unknown;
+  now: number;
+}):
+  | {
+      ok: true;
+      token: string;
+      ttlSeconds: number;
+    }
+  | {
+      ok: false;
+      reason: "missing_token" | "expired";
+    } {
+  const root = readObject(input.data);
+  const nested = readObject(root?.client_secret);
+  const candidate = nested ?? root;
+  const token = candidate?.value;
+
+  if (typeof token !== "string" || token.length === 0) {
+    return {
+      ok: false,
+      reason: "missing_token"
+    };
+  }
+
+  const expiresAtSeconds = candidate?.expires_at;
+  if (typeof expiresAtSeconds !== "number" || !Number.isFinite(expiresAtSeconds)) {
+    return {
+      ok: true,
+      token,
+      ttlSeconds: MAX_TOKEN_TTL_SECONDS
+    };
+  }
+
+  const ttlSeconds = Math.floor(expiresAtSeconds - Math.floor(input.now / 1000));
+  if (ttlSeconds <= 0) {
+    return {
+      ok: false,
+      reason: "expired"
+    };
+  }
+
+  return {
+    ok: true,
+    token,
+    ttlSeconds: Math.min(MAX_TOKEN_TTL_SECONDS, ttlSeconds)
+  };
+}
+
 export const mockSttAdapter: SttAdapter = {
   name: "mock",
   async createToken(input) {
@@ -178,27 +231,13 @@ export const openAiSttAdapter: SttAdapter = {
         };
       }
 
-      const data = (await response.json()) as {
-        client_secret?: {
-          value?: string;
-          expires_at?: number;
-        };
-      };
-      const clientSecret = data.client_secret?.value;
-      const expiresAtSeconds = data.client_secret?.expires_at;
       const now = input.now ?? Date.now();
-      const ttlSeconds =
-        typeof expiresAtSeconds === "number" && Number.isFinite(expiresAtSeconds)
-          ? Math.floor(expiresAtSeconds - Math.floor(now / 1000))
-          : null;
+      const clientSecret = parseOpenAiClientSecret({
+        data: await response.json(),
+        now
+      });
 
-      if (
-        typeof clientSecret !== "string" ||
-        clientSecret.length === 0 ||
-        !ttlSeconds ||
-        ttlSeconds <= 0 ||
-        ttlSeconds > MAX_TOKEN_TTL_SECONDS
-      ) {
+      if (!clientSecret.ok) {
         return {
           ok: false,
           diagnostic: {
@@ -218,8 +257,8 @@ export const openAiSttAdapter: SttAdapter = {
         stt: mockToken({
           ...input,
           provider: "openai",
-          token: clientSecret,
-          ttlSeconds
+          token: clientSecret.token,
+          ttlSeconds: clientSecret.ttlSeconds
         })
       };
     } catch (error) {
