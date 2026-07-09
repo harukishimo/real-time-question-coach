@@ -283,6 +283,9 @@ describe("LLM coach adapter", () => {
     };
     const userPayload = JSON.parse(requestBody.input[1].content) as Record<string, unknown>;
     expect(requestBody.input[0].content).toContain("duplicatePrevention.activeQuestions");
+    expect(requestBody.input[0].content).toContain("recentTranscript");
+    expect(requestBody.input[0].content).toContain("empty candidates array");
+    expect(userPayload.reviewMode).toBe("local_signal");
     expect(userPayload).toHaveProperty("latestFinalTranscript");
     expect(userPayload).toHaveProperty("unconfirmedIssues");
     expect(userPayload).toHaveProperty("triggerReasons");
@@ -290,6 +293,61 @@ describe("LLM coach adapter", () => {
     expect(userPayload).toHaveProperty("duplicatePrevention");
     expect(userPayload).not.toHaveProperty("existingCardQuestions");
     timeoutSpy.mockRestore();
+  });
+
+  it("runs a manual provider review without local seeds and accepts an intentional empty result", async () => {
+    let capturedBody: BodyInit | null | undefined;
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      capturedBody = init?.body;
+      return new Response(
+        JSON.stringify({
+          output_text: JSON.stringify({ candidates: [] })
+        }),
+        { status: 200 }
+      );
+    });
+    const unrelatedFinal = {
+      ...finalSegment,
+      id: "seg-manual-provider-review",
+      sequence: 2,
+      text: "引き続き一般的な話をしています。"
+    };
+
+    const result = await getCoachAdapter("openai").generateCards(
+      {
+        sessionProfile: profile,
+        transcriptSegments: [unrelatedFinal],
+        existingCards: [
+          existingCard(1, {
+            title: "目的との接続確認",
+            question: `今の話は「${profile.purpose}」のどの確認論点に接続しますか？`,
+            ruleIds: ["context-bridge"]
+          })
+        ],
+        lastLlmCallAt: Date.now(),
+        manualRecheck: true
+      },
+      {
+        apiKey: "server-key",
+        model: "gpt-5-mini",
+        fetcher: fetcher as unknown as typeof fetch
+      }
+    );
+
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(result.gate).toMatchObject({
+      shouldCallLlm: true,
+      reasons: ["manual_recheck"]
+    });
+    expect(result.candidates).toEqual([]);
+    expect(result.diagnostic).toBeUndefined();
+
+    const requestBody = JSON.parse(String(capturedBody)) as {
+      input: Array<{ role: string; content: string }>;
+    };
+    const userPayload = JSON.parse(requestBody.input[1].content) as Record<string, unknown>;
+    expect(userPayload.reviewMode).toBe("manual_recheck");
+    expect(userPayload.triggerReasons).toEqual(["manual_recheck"]);
   });
 
   it("filters provider candidates that duplicate already covered topics", async () => {

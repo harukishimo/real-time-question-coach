@@ -6,7 +6,8 @@ import type {
   TranscriptSegment
 } from "@/lib/types";
 
-const DEFAULT_COOLDOWN_MS = 8_000;
+export const DEFAULT_COOLDOWN_MS = 8_000;
+export const DEFAULT_CONTEXT_REVIEW_INTERVAL_MS = 20_000;
 
 export type LocalCoachContext = {
   latestFinal: TranscriptSegment | null;
@@ -164,11 +165,17 @@ export function evaluateLocalRuleGate(input: {
   finalSegments: TranscriptSegment[];
   existingCards: CoachCard[];
   lastLlmCallAt?: number;
+  manualRecheck?: boolean;
   now?: number;
   cooldownMs?: number;
+  contextReviewIntervalMs?: number;
 }): LocalRuleGateResult {
   const now = input.now ?? Date.now();
   const cooldownMs = input.cooldownMs ?? DEFAULT_COOLDOWN_MS;
+  const contextReviewIntervalMs = Math.max(
+    cooldownMs,
+    input.contextReviewIntervalMs ?? DEFAULT_CONTEXT_REVIEW_INTERVAL_MS
+  );
   const lastLlmCallAt = input.lastLlmCallAt ?? 0;
   const nextAllowedAt = lastLlmCallAt + cooldownMs;
   const latestFinal = input.finalSegments.at(-1);
@@ -182,7 +189,7 @@ export function evaluateLocalRuleGate(input: {
     };
   }
 
-  if (now < nextAllowedAt) {
+  if (!input.manualRecheck && now < nextAllowedAt) {
     return {
       shouldCallLlm: false,
       reasons: ["cooldown_active"],
@@ -196,14 +203,39 @@ export function evaluateLocalRuleGate(input: {
     finalSegments: input.finalSegments,
     existingCards: input.existingCards
   });
+  const localReasons = [...new Set(context.candidateSeeds.flatMap((candidate) => candidate.ruleIds))];
+
+  if (input.manualRecheck) {
+    return {
+      shouldCallLlm: true,
+      reasons: ["manual_recheck", ...localReasons],
+      candidateSeeds: context.candidateSeeds,
+      nextAllowedAt
+    };
+  }
+
+  if (context.candidateSeeds.length > 0) {
+    return {
+      shouldCallLlm: true,
+      reasons: localReasons,
+      candidateSeeds: context.candidateSeeds,
+      nextAllowedAt
+    };
+  }
+
+  if (lastLlmCallAt > 0 && now >= lastLlmCallAt + contextReviewIntervalMs) {
+    return {
+      shouldCallLlm: true,
+      reasons: ["transcript_window_review"],
+      candidateSeeds: [],
+      nextAllowedAt
+    };
+  }
 
   return {
-    shouldCallLlm: context.candidateSeeds.length > 0,
-    reasons:
-      context.candidateSeeds.length > 0
-        ? [...new Set(context.candidateSeeds.flatMap((candidate) => candidate.ruleIds))]
-        : ["no_local_trigger"],
-    candidateSeeds: context.candidateSeeds,
+    shouldCallLlm: false,
+    reasons: ["no_local_trigger"],
+    candidateSeeds: [],
     nextAllowedAt
   };
 }
@@ -231,6 +263,7 @@ export function decideCoachDispatch(input: {
   manualRecheck?: boolean;
   now?: number;
   cooldownMs?: number;
+  contextReviewIntervalMs?: number;
 }): CoachDispatchDecision {
   const finalSegments = input.segments.filter((segment) => segment.isFinal && segment.text.length > 0);
   const latestFinal = finalSegments.at(-1);
@@ -270,9 +303,11 @@ export function decideCoachDispatch(input: {
     sessionProfile: input.sessionProfile,
     finalSegments,
     existingCards: input.existingCards,
-    lastLlmCallAt: input.manualRecheck ? 0 : input.lastLlmCallAt,
+    lastLlmCallAt: input.lastLlmCallAt,
+    manualRecheck: input.manualRecheck,
     now: input.now,
-    cooldownMs: input.cooldownMs
+    cooldownMs: input.cooldownMs,
+    contextReviewIntervalMs: input.contextReviewIntervalMs
   });
 
   if (!gate.shouldCallLlm) {

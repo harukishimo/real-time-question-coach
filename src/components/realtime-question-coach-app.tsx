@@ -386,15 +386,15 @@ export function RealtimeQuestionCoachApp() {
     if (appliedLocalFallback) {
       setCards(fallbackCards);
       cardsRef.current = fallbackCards;
-      const nextLocalCallAt = Date.now();
-      setLastLlmCallAt(nextLocalCallAt);
-      lastLlmCallAtRef.current = nextLocalCallAt;
       setStatusMessage(`Coach local: ${dispatch.reasons.join(", ")}`);
     }
 
     try {
       coachInFlightRef.current = true;
       setCoachInFlight(true);
+      const dispatchStartedAt = Date.now();
+      setLastLlmCallAt(dispatchStartedAt);
+      lastLlmCallAtRef.current = dispatchStartedAt;
       const response = await postJson<{
         cards: CoachCard[];
         gate: {
@@ -414,11 +414,6 @@ export function RealtimeQuestionCoachApp() {
 
       setCards(response.cards);
       cardsRef.current = response.cards;
-      if (response.gate.shouldCallLlm) {
-        const nextLlmCallAt = Date.now();
-        setLastLlmCallAt(nextLlmCallAt);
-        lastLlmCallAtRef.current = nextLlmCallAt;
-      }
       setLastDispatchKey(dispatch.dispatchKey);
       lastDispatchKeyRef.current = dispatch.dispatchKey;
       setStatusMessage(

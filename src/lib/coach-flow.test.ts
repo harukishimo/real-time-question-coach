@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { applyCoachCardCandidates, countCardsByStatus, updateCardStatus } from "@/lib/coach-card";
 import { createDummyTranscriptPair } from "@/lib/dummy-transcript";
-import { buildLocalCoachContext, decideCoachDispatch, evaluateLocalRuleGate } from "@/lib/rule-gate";
+import {
+  DEFAULT_CONTEXT_REVIEW_INTERVAL_MS,
+  buildLocalCoachContext,
+  decideCoachDispatch,
+  evaluateLocalRuleGate
+} from "@/lib/rule-gate";
 import { createSessionProfile } from "@/lib/session-profile";
 import type { CoachCard, CoachCardCandidate } from "@/lib/types";
 
@@ -121,6 +126,88 @@ describe("coach flow", () => {
     expect(result.candidateSeeds).toHaveLength(1);
     expect(result.candidateSeeds[0].question).toContain(profile.purpose);
     expect(result.candidateSeeds[0].question).not.toContain("MVPで必ず成立させる業務成果");
+  });
+
+  it("reviews a growing transcript window every twenty seconds after the first bridge card", () => {
+    const finalSegment = {
+      id: "seg-window-review",
+      sequence: 2,
+      speaker: { id: "participant", label: "相手", source: "provider", confidence: 0.9 },
+      text: "その後の話をもう少し続けます。",
+      isFinal: true,
+      startedAtMs: 1000,
+      endedAtMs: 2000,
+      createdAt: new Date(1000).toISOString()
+    } as const;
+    const bridgeCard = {
+      ...existingCard(1, 62),
+      title: "目的との接続確認",
+      question: `今の話は「${profile.purpose}」のどの確認論点に接続しますか？`,
+      ruleIds: ["context-bridge"]
+    };
+    const lastLlmCallAt = 10_000;
+
+    expect(
+      evaluateLocalRuleGate({
+        sessionProfile: profile,
+        finalSegments: [finalSegment],
+        existingCards: [bridgeCard],
+        lastLlmCallAt,
+        now: lastLlmCallAt + DEFAULT_CONTEXT_REVIEW_INTERVAL_MS - 1
+      })
+    ).toMatchObject({
+      shouldCallLlm: false,
+      reasons: ["no_local_trigger"]
+    });
+
+    expect(
+      evaluateLocalRuleGate({
+        sessionProfile: profile,
+        finalSegments: [finalSegment],
+        existingCards: [bridgeCard],
+        lastLlmCallAt,
+        now: lastLlmCallAt + DEFAULT_CONTEXT_REVIEW_INTERVAL_MS
+      })
+    ).toMatchObject({
+      shouldCallLlm: true,
+      reasons: ["transcript_window_review"],
+      candidateSeeds: []
+    });
+  });
+
+  it("manual recheck reaches the provider even when there is no local candidate", () => {
+    const bridgeCard = {
+      ...existingCard(1, 62),
+      title: "目的との接続確認",
+      question: `今の話は「${profile.purpose}」のどの確認論点に接続しますか？`,
+      ruleIds: ["context-bridge"]
+    };
+
+    expect(
+      evaluateLocalRuleGate({
+        sessionProfile: profile,
+        finalSegments: [
+          {
+            id: "seg-manual-review",
+            sequence: 2,
+            speaker: { id: "participant", label: "相手", source: "provider", confidence: 0.9 },
+            text: "引き続き一般的な話をしています。",
+            isFinal: true,
+            startedAtMs: 1000,
+            endedAtMs: 2000,
+            createdAt: new Date(1000).toISOString()
+          }
+        ],
+        existingCards: [bridgeCard],
+        lastLlmCallAt: 30_000,
+        manualRecheck: true,
+        now: 30_100
+      })
+    ).toMatchObject({
+      shouldCallLlm: true,
+      reasons: ["manual_recheck"],
+      candidateSeeds: []
+    });
   });
 
   it("fills local fallback cards with playbook questions only when latest transcript has knowledge signals", () => {

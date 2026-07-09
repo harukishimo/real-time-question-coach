@@ -46,6 +46,7 @@ export type CoachAdapter = {
 export type CoachLlmPayload = {
   schemaVersion: "rqc.coach.v1";
   task: "generate_question_cards";
+  reviewMode: "local_signal" | "transcript_window" | "manual_recheck";
   session: {
     conversationType: string;
     industry: string;
@@ -105,6 +106,17 @@ const COACH_JSON_SCHEMA = {
     }
   }
 } as const;
+
+const COACH_SYSTEM_PROMPT = [
+  "Return only schema-valid Japanese question card candidates. Do not include meeting minutes.",
+  "Ground every candidate in recentTranscript or latestFinalTranscript and the session purpose.",
+  "Look for unresolved claims, vague language, missing reasons, actors, owners, dates, decision criteria, constraints, or next actions that are worth asking about now.",
+  "Treat localCandidateSeeds and unconfirmedIssues as hints, not mandatory questions.",
+  "Do not repeat duplicatePrevention.activeQuestions or duplicatePrevention.coveredTopics.",
+  "For transcript_window or manual_recheck reviewMode, inspect the whole recent window even when localCandidateSeeds is empty.",
+  "If the transcript does not support a useful follow-up, return an empty candidates array instead of inventing a checklist question.",
+  "If the latest transcript is weakly related to the session purpose, return at most one bridge question."
+].join(" ");
 
 export const DEFAULT_COACH_LLM_TIMEOUT_MS = 3_500;
 
@@ -178,7 +190,10 @@ function removeDuplicateTopicCandidates(
   );
 }
 
-export function buildCoachLlmPayload(input: CoachAdapterInput): CoachLlmPayload {
+export function buildCoachLlmPayload(
+  input: CoachAdapterInput,
+  dispatchReasons: string[] = []
+): CoachLlmPayload {
   const recentTranscript = getRecentConversationBuffer(input.transcriptSegments, 6);
   const context = buildLocalCoachContext({
     sessionProfile: input.sessionProfile,
@@ -186,10 +201,20 @@ export function buildCoachLlmPayload(input: CoachAdapterInput): CoachLlmPayload 
     existingCards: input.existingCards
   });
   const activeQuestions = displayCardQuestions(input.existingCards);
+  const triggerReasons = [
+    ...dispatchReasons,
+    ...context.candidateSeeds.flatMap((candidate) => candidate.ruleIds)
+  ];
+  const reviewMode = input.manualRecheck
+    ? "manual_recheck"
+    : triggerReasons.includes("transcript_window_review")
+      ? "transcript_window"
+      : "local_signal";
 
   return {
     schemaVersion: "rqc.coach.v1",
     task: "generate_question_cards",
+    reviewMode,
     session: {
       conversationType: input.sessionProfile.conversationType,
       industry: input.sessionProfile.industry,
@@ -210,7 +235,7 @@ export function buildCoachLlmPayload(input: CoachAdapterInput): CoachLlmPayload 
         }
       : null,
     unconfirmedIssues: context.unconfirmedIssues.slice(0, 8).map(redactInlineSecrets),
-    triggerReasons: [...new Set(context.candidateSeeds.flatMap((candidate) => candidate.ruleIds))].slice(0, 6),
+    triggerReasons: [...new Set(triggerReasons)].slice(0, 6),
     localCandidateSeeds: context.candidateSeeds.slice(0, 3).map((candidate) => ({
       title: redactInlineSecrets(candidate.title),
       question: redactInlineSecrets(candidate.question),
@@ -372,6 +397,36 @@ export function parseCoachProviderResponse(
   );
 }
 
+function coachCandidateEnvelope(value: unknown): unknown[] | null {
+  const root = readRecord(value);
+  if (!root) return null;
+  if (Array.isArray(root.candidates)) return root.candidates;
+
+  const openAiCandidates = collectOpenAiResponseTexts(value)
+    .map(parseJsonText)
+    .map(candidatesFromParsedJson)
+    .find((candidates): candidates is unknown[] => Array.isArray(candidates));
+  if (openAiCandidates) return openAiCandidates;
+
+  if (!Array.isArray(root.content)) return null;
+  const anthropicText = parseJsonText(
+    root.content
+      .map((item) => {
+        const content = readRecord(item);
+        return typeof content?.text === "string" ? content.text : "";
+      })
+      .join("")
+  );
+  const anthropicTextCandidates = candidatesFromParsedJson(anthropicText);
+  if (anthropicTextCandidates) return anthropicTextCandidates;
+
+  const toolUse = root.content
+    .map(readRecord)
+    .find((item) => item?.type === "tool_use");
+  const toolInput = readRecord(toolUse?.input);
+  return Array.isArray(toolInput?.candidates) ? toolInput.candidates : null;
+}
+
 export const mockCoachAdapter: CoachAdapter = {
   name: "mock",
   async generateCards(input) {
@@ -379,14 +434,15 @@ export const mockCoachAdapter: CoachAdapter = {
       sessionProfile: input.sessionProfile,
       finalSegments: input.transcriptSegments.filter((segment) => segment.isFinal),
       existingCards: input.existingCards,
-      lastLlmCallAt: input.manualRecheck ? 0 : input.lastLlmCallAt
+      lastLlmCallAt: input.lastLlmCallAt,
+      manualRecheck: input.manualRecheck
     });
 
     return {
       provider: "mock",
       gate,
       candidates: gate.shouldCallLlm ? validateCoachCandidates(gate.candidateSeeds) : [],
-      payloadPreview: buildCoachLlmPayload(input)
+      payloadPreview: buildCoachLlmPayload(input, gate.reasons)
     };
   }
 };
@@ -395,9 +451,13 @@ function providerTimeoutSignal(timeoutMs: number | undefined): AbortSignal {
   return AbortSignal.timeout(timeoutMs ?? DEFAULT_COACH_LLM_TIMEOUT_MS);
 }
 
-async function callOpenAiCoach(input: CoachAdapterInput, options: CoachAdapterOptions) {
+async function callOpenAiCoach(
+  input: CoachAdapterInput,
+  options: CoachAdapterOptions,
+  dispatchReasons: string[]
+) {
   const fetcher = options.fetcher ?? fetch;
-  const payload = buildCoachLlmPayload(input);
+  const payload = buildCoachLlmPayload(input, dispatchReasons);
   const response = await fetcher("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
@@ -410,8 +470,7 @@ async function callOpenAiCoach(input: CoachAdapterInput, options: CoachAdapterOp
       input: [
         {
           role: "system",
-          content:
-            "Return only schema-valid Japanese question card candidates. Do not include meeting minutes. Prioritize latestFinalTranscript, triggerReasons, unconfirmedIssues, and localCandidateSeeds. Do not repeat duplicatePrevention.activeQuestions or duplicatePrevention.coveredTopics. If the latest transcript is weakly related to the session purpose, return at most one bridge question instead of repeating checklist questions."
+          content: COACH_SYSTEM_PROMPT
         },
         {
           role: "user",
@@ -436,9 +495,13 @@ async function callOpenAiCoach(input: CoachAdapterInput, options: CoachAdapterOp
   return response.json() as Promise<unknown>;
 }
 
-async function callAnthropicCoach(input: CoachAdapterInput, options: CoachAdapterOptions) {
+async function callAnthropicCoach(
+  input: CoachAdapterInput,
+  options: CoachAdapterOptions,
+  dispatchReasons: string[]
+) {
   const fetcher = options.fetcher ?? fetch;
-  const payload = buildCoachLlmPayload(input);
+  const payload = buildCoachLlmPayload(input, dispatchReasons);
   const response = await fetcher("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -450,8 +513,7 @@ async function callAnthropicCoach(input: CoachAdapterInput, options: CoachAdapte
     body: JSON.stringify({
       model: options.model,
       max_tokens: 800,
-      system:
-          "Return Japanese question card candidates via the provided tool. Do not include meeting minutes. Prioritize latestFinalTranscript, triggerReasons, unconfirmedIssues, and localCandidateSeeds. Do not repeat duplicatePrevention.activeQuestions or duplicatePrevention.coveredTopics. If the latest transcript is weakly related to the session purpose, return at most one bridge question instead of repeating checklist questions.",
+      system: COACH_SYSTEM_PROMPT,
       messages: [
         {
           role: "user",
@@ -487,9 +549,10 @@ function realCoachAdapter(provider: Exclude<LlmProvider, "mock">): CoachAdapter 
         sessionProfile: input.sessionProfile,
         finalSegments: input.transcriptSegments.filter((segment) => segment.isFinal),
         existingCards: input.existingCards,
-        lastLlmCallAt: input.manualRecheck ? 0 : input.lastLlmCallAt
+        lastLlmCallAt: input.lastLlmCallAt,
+        manualRecheck: input.manualRecheck
       });
-      const payloadPreview = buildCoachLlmPayload(input);
+      const payloadPreview = buildCoachLlmPayload(input, gate.reasons);
       const localCandidates = gate.shouldCallLlm ? validateCoachCandidates(gate.candidateSeeds) : [];
 
       if (!gate.shouldCallLlm) {
@@ -521,15 +584,12 @@ function realCoachAdapter(provider: Exclude<LlmProvider, "mock">): CoachAdapter 
         );
         const raw =
           provider === "openai"
-            ? await callOpenAiCoach(input, options)
-            : await callAnthropicCoach(input, options);
-        const candidates = removeDuplicateTopicCandidates(
-          parseCoachProviderResponse(raw, sourceSegmentIds),
-          input.sessionProfile,
-          input.existingCards
-        );
+            ? await callOpenAiCoach(input, options, gate.reasons)
+            : await callAnthropicCoach(input, options, gate.reasons);
+        const envelope = coachCandidateEnvelope(raw);
+        const providerCandidates = parseCoachProviderResponse(raw, sourceSegmentIds);
 
-        if (candidates.length === 0) {
+        if (!envelope || (envelope.length > 0 && providerCandidates.length === 0)) {
           return {
             provider,
             gate,
@@ -543,6 +603,21 @@ function realCoachAdapter(provider: Exclude<LlmProvider, "mock">): CoachAdapter 
               retryable: false,
               severity: "error"
             }
+          };
+        }
+
+        const candidates = removeDuplicateTopicCandidates(
+          providerCandidates,
+          input.sessionProfile,
+          input.existingCards
+        );
+
+        if (candidates.length === 0) {
+          return {
+            provider,
+            gate,
+            candidates: localCandidates,
+            payloadPreview
           };
         }
 
