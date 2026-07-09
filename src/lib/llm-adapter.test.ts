@@ -141,6 +141,31 @@ describe("LLM coach adapter", () => {
     });
   });
 
+  it("parses raw OpenAI Responses API output content", () => {
+    const openAi = parseCoachProviderResponse(
+      {
+        output: [
+          {
+            type: "message",
+            content: [
+              {
+                type: "output_text",
+                text: JSON.stringify({
+                  candidates: [candidate(1)]
+                })
+              }
+            ]
+          }
+        ]
+      },
+      [finalSegment.id]
+    );
+
+    expect(openAi[0]).toMatchObject({
+      stableKey: "provider-1"
+    });
+  });
+
   it("fails closed when real provider env is missing", async () => {
     const result = await getCoachAdapter("anthropic").generateCards({
       sessionProfile: profile,
@@ -213,12 +238,12 @@ describe("LLM coach adapter", () => {
     );
 
     expect(result).toMatchObject({
-      candidates: [],
       diagnostic: {
         code: "schema_mismatch",
         provider: "anthropic"
       }
     });
+    expect(result.candidates.length).toBeGreaterThan(0);
   });
 
   it("normalizes timeout, rate limit, and empty provider responses safely", async () => {
@@ -243,6 +268,11 @@ describe("LLM coach adapter", () => {
         timeoutMs: 10
       })
     ).resolves.toMatchObject({
+      candidates: expect.arrayContaining([
+        expect.objectContaining({
+          question: expect.stringContaining("確認")
+        })
+      ]),
       diagnostic: {
         code: "provider_timeout"
       }

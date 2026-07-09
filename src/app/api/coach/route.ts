@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
     }
   );
   const candidates = validateCoachCandidates(result.candidates);
-  if (result.diagnostic && config.llmProvider !== "mock") {
+  if (result.diagnostic && config.llmProvider !== "mock" && candidates.length === 0) {
     return jsonError(result.diagnostic.code, result.diagnostic.message, 422, result.diagnostic);
   }
   const cards = applyCoachCardCandidates(existingCards, candidates);

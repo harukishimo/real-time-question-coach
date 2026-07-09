@@ -89,7 +89,7 @@ const COACH_JSON_SCHEMA = {
   }
 } as const;
 
-export const DEFAULT_COACH_LLM_TIMEOUT_MS = 30_000;
+export const DEFAULT_COACH_LLM_TIMEOUT_MS = 3_500;
 
 function stripTags(value: string): string {
   return value.replace(/<[^>]*>/g, "").trim();
@@ -179,13 +179,67 @@ function parseJsonText(value: unknown): unknown {
   }
 }
 
+function readRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+}
+
+function collectOpenAiResponseTexts(value: unknown): string[] {
+  const root = readRecord(value);
+  if (!root) return [];
+
+  const texts: string[] = [];
+  if (typeof root.output_text === "string") {
+    texts.push(root.output_text);
+  }
+
+  if (!Array.isArray(root.output)) {
+    return texts;
+  }
+
+  root.output.forEach((outputItem) => {
+    const item = readRecord(outputItem);
+    if (!item) return;
+
+    if (typeof item.text === "string") {
+      texts.push(item.text);
+    }
+
+    if (!Array.isArray(item.content)) {
+      return;
+    }
+
+    item.content.forEach((contentItem) => {
+      const content = readRecord(contentItem);
+      if (!content) return;
+
+      if (typeof content.text === "string") {
+        texts.push(content.text);
+      }
+      if (typeof content.output_text === "string") {
+        texts.push(content.output_text);
+      }
+    });
+  });
+
+  return texts;
+}
+
+function candidatesFromParsedJson(value: unknown): unknown[] | null {
+  const parsed = readRecord(value);
+  return Array.isArray(parsed?.candidates) ? parsed.candidates : null;
+}
+
 export function parseCoachProviderResponse(
   value: unknown,
   sourceSegmentIds: string[]
 ): CoachCardCandidate[] {
   const root = value as Record<string, unknown>;
   const direct = Array.isArray(root?.candidates) ? root.candidates : null;
-  const openAiText = typeof root?.output_text === "string" ? parseJsonText(root.output_text) : null;
+  const openAiCandidates =
+    collectOpenAiResponseTexts(value)
+      .map(parseJsonText)
+      .map(candidatesFromParsedJson)
+      .find((candidates): candidates is unknown[] => Array.isArray(candidates)) ?? null;
   const anthropicText = Array.isArray(root?.content)
     ? parseJsonText(
         root.content
@@ -204,7 +258,7 @@ export function parseCoachProviderResponse(
     : null;
   const candidates =
     direct ??
-    ((openAiText as { candidates?: unknown[] } | null)?.candidates ?? null) ??
+    openAiCandidates ??
     ((anthropicText as { candidates?: unknown[] } | null)?.candidates ?? null) ??
     ((anthropicToolInput as { input?: { candidates?: unknown[] } } | null)?.input?.candidates ?? null);
 
@@ -335,6 +389,7 @@ function realCoachAdapter(provider: Exclude<LlmProvider, "mock">): CoachAdapter 
         lastLlmCallAt: input.manualRecheck ? 0 : input.lastLlmCallAt
       });
       const payloadPreview = buildCoachLlmPayload(input);
+      const localCandidates = gate.shouldCallLlm ? validateCoachCandidates(gate.candidateSeeds) : [];
 
       if (!gate.shouldCallLlm) {
         return {
@@ -373,7 +428,7 @@ function realCoachAdapter(provider: Exclude<LlmProvider, "mock">): CoachAdapter 
           return {
             provider,
             gate,
-            candidates: [],
+            candidates: localCandidates,
             payloadPreview,
             diagnostic: {
               code: "schema_mismatch",
@@ -396,7 +451,7 @@ function realCoachAdapter(provider: Exclude<LlmProvider, "mock">): CoachAdapter 
         return {
           provider,
           gate,
-          candidates: [],
+          candidates: localCandidates,
           payloadPreview,
           diagnostic: normalizeProviderError(error, {
             category: "llm",

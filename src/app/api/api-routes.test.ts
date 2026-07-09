@@ -60,6 +60,8 @@ describe("api routes", () => {
 
   afterEach(() => {
     vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   it("rejects unauthenticated access to protected MVP APIs", async () => {
@@ -192,6 +194,49 @@ describe("api routes", () => {
     expect(body.storagePolicy).toEqual({
       persistedToServer: false,
       bodyLogged: false
+    });
+    expect(body.cards.length).toBeGreaterThan(0);
+  });
+
+  it("returns local fallback coach cards when real LLM response schema mismatches", async () => {
+    vi.stubEnv("RQC_LLM_PROVIDER", "openai");
+    vi.stubEnv("OPENAI_API_KEY", "sk-test-openai");
+    vi.stubEnv("LLM_MODEL_REALTIME", "gpt-5-mini");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ invalid: true }), { status: 200 }))
+    );
+
+    const sessionProfile = createSessionProfile(setupInput);
+    const response = await postCoach(
+      apiRequest(
+        {
+          sessionProfile,
+          transcriptSegments: [
+            {
+              id: "seg-schema-fallback",
+              sequence: 1,
+              speaker: { id: "participant", label: "相手", source: "fixture", confidence: 1 },
+              text: "権限ごとの承認者はまだ決まっていません。",
+              isFinal: true,
+              startedAtMs: 0,
+              endedAtMs: 1000,
+              createdAt: new Date().toISOString()
+            }
+          ],
+          existingCards: [],
+          lastLlmCallAt: 0
+        },
+        authHeaders
+      )
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.diagnostic).toMatchObject({
+      code: "schema_mismatch",
+      category: "llm",
+      provider: "openai"
     });
     expect(body.cards.length).toBeGreaterThan(0);
   });

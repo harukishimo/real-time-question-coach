@@ -100,12 +100,70 @@ function parseJsonText(value: unknown): unknown {
   }
 }
 
+function readRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+}
+
+function collectOpenAiResponseTexts(value: unknown): string[] {
+  const root = readRecord(value);
+  if (!root) return [];
+
+  const texts: string[] = [];
+  if (typeof root.output_text === "string") {
+    texts.push(root.output_text);
+  }
+
+  if (!Array.isArray(root.output)) {
+    return texts;
+  }
+
+  root.output.forEach((outputItem) => {
+    const item = readRecord(outputItem);
+    if (!item) return;
+
+    if (typeof item.text === "string") {
+      texts.push(item.text);
+    }
+
+    if (!Array.isArray(item.content)) {
+      return;
+    }
+
+    item.content.forEach((contentItem) => {
+      const content = readRecord(contentItem);
+      if (!content) return;
+
+      if (typeof content.text === "string") {
+        texts.push(content.text);
+      }
+      if (typeof content.output_text === "string") {
+        texts.push(content.output_text);
+      }
+    });
+  });
+
+  return texts;
+}
+
+function isReportShape(value: unknown): value is Record<string, unknown> {
+  const candidate = readRecord(value);
+  return Boolean(
+    candidate &&
+      Array.isArray(candidate.heardItems) &&
+      Array.isArray(candidate.missedItems) &&
+      Array.isArray(candidate.nextActions)
+  );
+}
+
 export function parseReportProviderResponse(
   value: unknown,
   fallback: SessionReport
 ): SessionReport | null {
   const root = value as Record<string, unknown>;
-  const openAiText = typeof root?.output_text === "string" ? parseJsonText(root.output_text) : null;
+  const openAiReport =
+    collectOpenAiResponseTexts(value)
+      .map(parseJsonText)
+      .find(isReportShape) ?? null;
   const anthropicText = Array.isArray(root?.content)
     ? parseJsonText(
         root.content
@@ -117,8 +175,8 @@ export function parseReportProviderResponse(
           .join("")
       )
     : null;
-  const direct = root?.heardItems ? root : null;
-  const candidate = (direct ?? openAiText ?? anthropicText) as Record<string, unknown> | null;
+  const direct = isReportShape(root) ? root : null;
+  const candidate = (direct ?? openAiReport ?? anthropicText) as Record<string, unknown> | null;
 
   if (
     !candidate ||

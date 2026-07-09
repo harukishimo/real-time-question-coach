@@ -12,7 +12,7 @@ import {
   getCurrentSupabaseUser,
   signInWithGoogleOAuth
 } from "@/lib/auth-client";
-import { countCardsByStatus, updateCardStatus } from "@/lib/coach-card";
+import { applyCoachCardCandidates, countCardsByStatus, updateCardStatus } from "@/lib/coach-card";
 import { createDummyTranscriptPair } from "@/lib/dummy-transcript";
 import { buildJsonExport, buildMarkdownExport } from "@/lib/export";
 import {
@@ -381,6 +381,17 @@ export function RealtimeQuestionCoachApp() {
       return;
     }
 
+    const fallbackCards = applyCoachCardCandidates(activeCards, dispatch.candidateSeeds);
+    const appliedLocalFallback = JSON.stringify(fallbackCards) !== JSON.stringify(activeCards);
+    if (appliedLocalFallback) {
+      setCards(fallbackCards);
+      cardsRef.current = fallbackCards;
+      const nextLocalCallAt = Date.now();
+      setLastLlmCallAt(nextLocalCallAt);
+      lastLlmCallAtRef.current = nextLocalCallAt;
+      setStatusMessage(`Coach local: ${dispatch.reasons.join(", ")}`);
+    }
+
     try {
       coachInFlightRef.current = true;
       setCoachInFlight(true);
@@ -390,10 +401,13 @@ export function RealtimeQuestionCoachApp() {
           shouldCallLlm: boolean;
           reasons: string[];
         };
+        diagnostic?: {
+          code: string;
+        };
       }>("/api/coach", {
         sessionProfile: activeSessionProfile,
         transcriptSegments: nextSegments,
-        existingCards: activeCards,
+        existingCards: fallbackCards,
         lastLlmCallAt: activeLastLlmCallAt,
         manualRecheck
       });
@@ -407,9 +421,21 @@ export function RealtimeQuestionCoachApp() {
       }
       setLastDispatchKey(dispatch.dispatchKey);
       lastDispatchKeyRef.current = dispatch.dispatchKey;
-      setStatusMessage(`Coach gate: ${response.gate.reasons.join(", ")}`);
+      setStatusMessage(
+        `Coach gate: ${response.gate.reasons.join(", ")}${
+          response.diagnostic ? ` / provider: ${response.diagnostic.code}` : ""
+        }`
+      );
     } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "Coach request failed.");
+      if (appliedLocalFallback) {
+        setLastDispatchKey(dispatch.dispatchKey);
+        lastDispatchKeyRef.current = dispatch.dispatchKey;
+        setStatusMessage(
+          `Coach local fallback: ${dispatch.reasons.join(", ")} / provider request failed.`
+        );
+      } else {
+        setStatusMessage(error instanceof Error ? error.message : "Coach request failed.");
+      }
     } finally {
       coachInFlightRef.current = false;
       setCoachInFlight(false);

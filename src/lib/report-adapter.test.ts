@@ -113,6 +113,44 @@ describe("LLM report adapter", () => {
     });
   });
 
+  it("parses raw OpenAI Responses API report output content", () => {
+    const fallback = {
+      sessionId: profile.id,
+      heardItems: [],
+      missedItems: [],
+      nextActions: [],
+      cardStats: { total: 0, done: 0, later: 0, dismissed: 0 },
+      generatedAt: new Date(0).toISOString()
+    };
+
+    expect(
+      parseReportProviderResponse(
+        {
+          output: [
+            {
+              type: "message",
+              content: [
+                {
+                  type: "output_text",
+                  text: JSON.stringify({
+                    heardItems: ["聞けた"],
+                    missedItems: ["未確認"],
+                    nextActions: ["次回確認"]
+                  })
+                }
+              ]
+            }
+          ]
+        },
+        fallback
+      )
+    ).toMatchObject({
+      heardItems: ["聞けた"],
+      missedItems: ["未確認"],
+      nextActions: ["次回確認"]
+    });
+  });
+
   it("uses mock report without real provider execution", async () => {
     const result = await generateSessionReportWithProvider("mock", {
       sessionProfile: profile,

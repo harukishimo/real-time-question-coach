@@ -78,6 +78,23 @@ test("manual recheck double click does not create duplicate in-flight coach disp
   expect(coachRequestCount - before).toBe(1);
 });
 
+test("local coach cards appear before delayed provider response", async ({ page }) => {
+  await page.route("**/api/coach", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await route.continue();
+  });
+
+  await startDefaultSession(page);
+  await page.getByRole("button", { name: "ダミー文字起こし開始" }).click();
+
+  await expect(page.getByLabel("AI補助カード")).toContainText(/active [1-3]/, {
+    timeout: 500
+  });
+  await expect(page.getByRole("status")).toContainText("Coach local", {
+    timeout: 500
+  });
+});
+
 test("provider diagnostics not-ready UI shows env names without secrets", async ({ page }) => {
   await startDefaultSession(page);
   await page.route("**/api/diagnostics", async (route) => {

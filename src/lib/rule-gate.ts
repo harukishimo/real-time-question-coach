@@ -127,6 +127,7 @@ export type CoachDispatchDecision =
       shouldDispatch: true;
       dispatchKey: string;
       reasons: string[];
+      candidateSeeds: CoachCardCandidate[];
     }
   | {
       shouldDispatch: false;
@@ -188,9 +189,18 @@ export function decideCoachDispatch(input: {
     cooldownMs: input.cooldownMs
   });
 
+  if (!gate.shouldCallLlm) {
+    return {
+      shouldDispatch: false,
+      dispatchKey,
+      reasons: gate.reasons
+    };
+  }
+
   return {
-    shouldDispatch: gate.shouldCallLlm,
+    shouldDispatch: true,
     dispatchKey,
-    reasons: gate.reasons
+    reasons: gate.reasons,
+    candidateSeeds: gate.candidateSeeds
   };
 }
