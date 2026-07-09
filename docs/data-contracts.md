@@ -109,7 +109,7 @@ type CoachCard = {
 };
 ```
 
-active表示は最大3件である。
+active表示は最大6件であり、右ペイン内スクロールで全件へ到達可能にする。
 
 scoreの扱い:
 
@@ -145,7 +145,7 @@ LLMは常時呼び出さない。local rule gateが必要性を判定した場�
 const DEFAULT_COOLDOWN_MS = 15_000;
 ```
 
-manual recheckはユーザーの明示操作なのでcooldownを解除できる。ただしin-flight重複とactive最大3件制御は維持する。
+manual recheckはユーザーの明示操作なのでcooldownを解除できる。ただしin-flight重複とactive最大6件制御は維持する。
 
 ## sessionReport
 

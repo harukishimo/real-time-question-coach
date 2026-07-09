@@ -66,7 +66,7 @@ MVPでは、会話データをサーバーDBに永続保存しない。認証・
 - local rule gate
 - LLMカード生成
 - AIカードJSON schema検証
-- active最大3件のカード表示制御
+- active最大6件のカード表示制御と右ペイン内スクロール
 - queued / later / dismissed / done / pinned のカード状態管理
 - 会議後レポート
 - ローカル保存 / Markdown / JSON エクスポート
@@ -335,7 +335,7 @@ LLMには会話全文を送らない。送信対象は次に絞る。
 
 | 状態 | 意味 |
 | --- | --- |
-| `active` | 右ペインに表示中。最大3件 |
+| `active` | 右ペインに表示中。最大6件。カード一覧内のスクロールで全件へ到達可能 |
 | `queued` | 表示待ち |
 | `later` | あとで回収 |
 | `done` | 聞いた / 回収済み |
@@ -344,7 +344,7 @@ LLMには会話全文を送らない。送信対象は次に絞る。
 
 表示ルール:
 
-1. activeカードは最大3件にする。
+1. activeカードは最大6件にする。
 2. 新規候補はスコアリングと `dedupeKey` による重複判定を通す。
 3. active枠が空いている場合は高スコア順に表示する。
 4. active枠が満杯の場合、新規候補がactive内の最低スコアを上回る時だけ入れ替える。
@@ -352,6 +352,7 @@ LLMには会話全文を送らない。送信対象は次に絞る。
 6. `pinned` は原則として自動降格しない。
 7. `done` / `dismissed` は同一論点の再表示を抑制する。
 8. `再判定` では active / queued / later を再スコアリングする。
+9. 右ペインの高さを保ち、カード一覧内のスクロールで最大6件すべてへ到達できるようにする。
 
 ## 11. データモデル要件
 
@@ -393,8 +394,8 @@ LLMには会話全文を送らない。送信対象は次に絞る。
   "heard": ["current_process"],
   "missing": ["budget", "decision_maker", "timeline"],
   "recentTopics": ["budget", "board_meeting", "estimate"],
-  "activeCardIds": ["card_001", "card_002", "card_003"],
-  "queuedCardIds": ["card_004"]
+  "activeCardIds": ["card_001", "card_002", "card_003", "card_004", "card_005", "card_006"],
+  "queuedCardIds": ["card_007"]
 }
 ```
 
@@ -579,7 +580,7 @@ Response:
 | --- | --- |
 | NFR-SYS-001 | 重要論点発生から初回カード表示まで10秒以内を目標にする。 |
 | NFR-SYS-002 | LLM呼び出し頻度は通常15-30秒に1回以下を目標にする。 |
-| NFR-SYS-003 | activeカード表示は最大3件とする。 |
+| NFR-SYS-003 | activeカード表示は最大6件とし、右ペイン内スクロールで全件へ到達可能にする。 |
 | NFR-SYS-004 | partial transcriptではLLMを呼ばない。 |
 | NFR-SYS-005 | LLM入力は直近1-3分の会話に制限する。 |
 
@@ -651,7 +652,7 @@ Response:
 - Session Setupで会話タイプ、業界、相手役職、目的、確認論点、音声ソースを設定できる。
 - `セッション開始` で文字起こし + AI補助カード画面へ遷移する。
 - ダミー文字起こしからAIカードを生成できる。
-- activeカードは最大3件に制限される。
+- activeカードは最大6件に制限され、右ペイン内スクロールで全件を確認できる。
 - 重要度の高い新規カードが来た場合、低優先カードがqueuedへ移動する。
 - `聞いた` / `あとで` / `不要` / `固定` / `再判定` が動作する。
 - `設定へ戻る` でSession Setupへ戻れる。

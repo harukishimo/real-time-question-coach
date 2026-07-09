@@ -1,6 +1,6 @@
 import type { CoachCard, CoachCardCandidate, CoachCardStatus } from "@/lib/types";
 
-const ACTIVE_CARD_LIMIT = 3;
+const ACTIVE_CARD_LIMIT = 6;
 
 function makeCardId(candidate: CoachCardCandidate): string {
   return `card-${candidate.stableKey.replace(/[^a-zA-Z0-9一-龠ぁ-んァ-ン]/g, "-")}`;

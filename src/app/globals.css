@@ -337,6 +337,12 @@ textarea {
   gap: 10px;
 }
 
+.coach-list {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
 .transcript-item,
 .coach-card,
 .empty-state {
@@ -457,9 +463,13 @@ textarea {
     grid-template-columns: 1fr;
   }
 
-  .transcript-list,
-  .coach-list {
+  .transcript-list {
     min-height: 360px;
     max-height: none;
+  }
+
+  .coach-list {
+    min-height: 360px;
+    max-height: 520px;
   }
 }

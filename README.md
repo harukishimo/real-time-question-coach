@@ -11,7 +11,7 @@ The MVP is mock-first: it can run locally without real Supabase, STT, or LLM cre
 - Browser-memory session profile, repository playbook resolution, dummy transcript engine, transcript buffer
 - Category playbooks under `playbooks/` for sales, requirements, recruiting, and user research
 - Local Rule Gate to avoid constant LLM calls
-- Mock coach API and card engine with active cards capped at 3
+- Mock coach API and card engine with active cards capped at 6 in a scrollable pane
 - Audio source capture, short-lived STT token API, and OpenAI Realtime WebRTC client boundary
 - Session Report, Markdown export, JSON export, local browser save, and discard
 - Security guardrails for no server DB persistence of conversation data and no body logging

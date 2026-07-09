@@ -252,7 +252,10 @@ describe("api routes", () => {
             existingCoachCard(1, 88),
             existingCoachCard(2, 77),
             existingCoachCard(3, 99),
-            existingCoachCard(4, 66)
+            existingCoachCard(4, 66),
+            existingCoachCard(5, 55),
+            existingCoachCard(6, 44),
+            existingCoachCard(7, 33)
           ],
           lastLlmCallAt: Date.now()
         },
@@ -262,7 +265,7 @@ describe("api routes", () => {
     const body = (await response.json()) as { cards: CoachCard[] };
 
     expect(response.status).toBe(200);
-    expect(countCardsByStatus(body.cards).active).toBeLessThanOrEqual(3);
+    expect(countCardsByStatus(body.cards).active).toBeLessThanOrEqual(6);
     expect(countCardsByStatus(body.cards).queued).toBeGreaterThanOrEqual(1);
   });
 
@@ -277,7 +280,10 @@ describe("api routes", () => {
             { ...existingCoachCard(1, 88), id: "dup" },
             { ...existingCoachCard(2, 77), id: "dup" },
             { ...existingCoachCard(3, 99), id: "dup" },
-            { ...existingCoachCard(4, 66), id: "dup" }
+            { ...existingCoachCard(4, 66), id: "dup" },
+            { ...existingCoachCard(5, 55), id: "dup" },
+            { ...existingCoachCard(6, 44), id: "dup" },
+            { ...existingCoachCard(7, 33), id: "dup" }
           ],
           lastLlmCallAt: Date.now()
         },
@@ -287,7 +293,7 @@ describe("api routes", () => {
     const body = (await response.json()) as { cards: CoachCard[] };
 
     expect(response.status).toBe(200);
-    expect(countCardsByStatus(body.cards).active).toBe(3);
+    expect(countCardsByStatus(body.cards).active).toBe(6);
     expect(countCardsByStatus(body.cards).queued).toBeGreaterThanOrEqual(1);
   });
 
@@ -312,7 +318,10 @@ describe("api routes", () => {
           existingCards: [
             { ...existingCoachCard(1, 100), id: "dup", status: "pinned" },
             { ...existingCoachCard(2, 10), id: "dup" },
-            existingCoachCard(3, 20)
+            existingCoachCard(3, 20),
+            existingCoachCard(4, 30),
+            existingCoachCard(5, 40),
+            existingCoachCard(6, 50)
           ],
           lastLlmCallAt: 0
         },
@@ -322,7 +331,7 @@ describe("api routes", () => {
     const body = (await response.json()) as { cards: CoachCard[] };
 
     expect(response.status).toBe(200);
-    expect(countCardsByStatus(body.cards).active).toBe(3);
+    expect(countCardsByStatus(body.cards).active).toBe(6);
     expect(body.cards.find((card) => card.id === "dup" && card.score === 100)?.status).toBe(
       "pinned"
     );

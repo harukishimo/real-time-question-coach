@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { applyCoachCardCandidates, countCardsByStatus, updateCardStatus } from "@/lib/coach-card";
+import {
+  applyCoachCardCandidates,
+  countCardsByStatus,
+  getActiveCardLimit,
+  updateCardStatus
+} from "@/lib/coach-card";
 import { createDummyTranscriptPair } from "@/lib/dummy-transcript";
 import {
   DEFAULT_CONTEXT_REVIEW_INTERVAL_MS,
@@ -335,13 +340,14 @@ describe("coach flow", () => {
     );
   });
 
-  it("keeps active coach cards capped at three", () => {
+  it("keeps active coach cards capped at six", () => {
     const cards = applyCoachCardCandidates(
       [],
-      [candidate(1), candidate(2), candidate(3), candidate(4), candidate(5)]
+      Array.from({ length: 8 }, (_, index) => candidate(index + 1))
     );
 
-    expect(countCardsByStatus(cards).active).toBe(3);
+    expect(getActiveCardLimit()).toBe(6);
+    expect(countCardsByStatus(cards).active).toBe(6);
     expect(countCardsByStatus(cards).queued).toBe(2);
   });
 
@@ -366,11 +372,11 @@ describe("coach flow", () => {
   it("promotes queued cards after a user action", () => {
     const cards = applyCoachCardCandidates(
       [],
-      [candidate(1), candidate(2), candidate(3), candidate(4)]
+      Array.from({ length: 7 }, (_, index) => candidate(index + 1))
     );
     const updated = updateCardStatus(cards, cards[0].id, "done");
 
-    expect(countCardsByStatus(updated).active).toBe(3);
+    expect(countCardsByStatus(updated).active).toBe(6);
     expect(countCardsByStatus(updated).queued).toBe(0);
     expect(countCardsByStatus(updated).done).toBe(1);
   });
@@ -378,22 +384,36 @@ describe("coach flow", () => {
   it("replaces the lowest non-pinned active card when a higher score candidate arrives", () => {
     const cards = applyCoachCardCandidates(
       [],
-      [scoredCandidate(1, 61), scoredCandidate(2, 70), scoredCandidate(3, 80)]
+      [
+        scoredCandidate(1, 61),
+        scoredCandidate(2, 70),
+        scoredCandidate(3, 80),
+        scoredCandidate(4, 81),
+        scoredCandidate(5, 82),
+        scoredCandidate(6, 83)
+      ]
     );
     const updated = applyCoachCardCandidates(cards, [scoredCandidate(9, 99)]);
 
     const activeCards = updated.filter((card) => card.status === "active");
     const queuedCards = updated.filter((card) => card.status === "queued");
 
-    expect(countCardsByStatus(updated).active).toBe(3);
-    expect(activeCards.map((card) => card.score).sort((a, b) => a - b)).toEqual([70, 80, 99]);
+    expect(countCardsByStatus(updated).active).toBe(6);
+    expect(activeCards.map((card) => card.score).sort((a, b) => a - b)).toEqual([
+      70,
+      80,
+      81,
+      82,
+      83,
+      99
+    ]);
     expect(queuedCards.map((card) => card.score)).toContain(61);
   });
 
   it("does not demote pinned cards when all active slots are pinned", () => {
     const cards = applyCoachCardCandidates(
       [],
-      [scoredCandidate(1, 61), scoredCandidate(2, 70), scoredCandidate(3, 80)]
+      Array.from({ length: 6 }, (_, index) => scoredCandidate(index + 1, 60 + index))
     );
     const pinned = cards.map((card) => ({
       ...card,
@@ -401,9 +421,9 @@ describe("coach flow", () => {
     }));
     const updated = applyCoachCardCandidates(pinned, [scoredCandidate(9, 99)]);
 
-    expect(countCardsByStatus(updated).active).toBe(3);
+    expect(countCardsByStatus(updated).active).toBe(6);
     expect(countCardsByStatus(updated).queued).toBe(1);
-    expect(updated.filter((card) => card.status === "pinned")).toHaveLength(3);
+    expect(updated.filter((card) => card.status === "pinned")).toHaveLength(6);
   });
 
   it("normalizes pre-existing active cards before returning coach results", () => {
@@ -412,18 +432,22 @@ describe("coach flow", () => {
         existingCard(1, 91),
         existingCard(2, 72),
         existingCard(3, 83),
-        existingCard(4, 64)
+        existingCard(4, 64),
+        existingCard(5, 95),
+        existingCard(6, 51),
+        existingCard(7, 60)
       ],
       []
     );
 
-    expect(countCardsByStatus(updated).active).toBe(3);
+    expect(countCardsByStatus(updated).active).toBe(6);
     expect(countCardsByStatus(updated).queued).toBe(1);
-    expect(updated.filter((card) => card.status === "active").map((card) => card.score).sort()).toEqual([
-      72,
-      83,
-      91
-    ]);
+    expect(
+      updated
+        .filter((card) => card.status === "active")
+        .map((card) => card.score)
+        .sort((a, b) => a - b)
+    ).toEqual([60, 64, 72, 83, 91, 95]);
   });
 
   it("normalizes pre-existing active cards even when client-supplied ids are duplicated", () => {
@@ -432,12 +456,15 @@ describe("coach flow", () => {
         { ...existingCard(1, 91), id: "duplicate" },
         { ...existingCard(2, 72), id: "duplicate" },
         { ...existingCard(3, 83), id: "duplicate" },
-        { ...existingCard(4, 64), id: "duplicate" }
+        { ...existingCard(4, 64), id: "duplicate" },
+        { ...existingCard(5, 95), id: "duplicate" },
+        { ...existingCard(6, 51), id: "duplicate" },
+        { ...existingCard(7, 60), id: "duplicate" }
       ],
       []
     );
 
-    expect(countCardsByStatus(updated).active).toBe(3);
+    expect(countCardsByStatus(updated).active).toBe(6);
     expect(countCardsByStatus(updated).queued).toBe(1);
   });
 
@@ -446,6 +473,9 @@ describe("coach flow", () => {
       [
         existingCard(1, 91),
         existingCard(2, 72),
+        existingCard(6, 70),
+        existingCard(7, 69),
+        existingCard(8, 68),
         { ...existingCard(3, 83, "queued"), id: "duplicate-queued" },
         { ...existingCard(4, 64, "queued"), id: "duplicate-queued" },
         { ...existingCard(5, 95, "queued"), id: "duplicate-queued" }
@@ -453,7 +483,7 @@ describe("coach flow", () => {
       []
     );
 
-    expect(countCardsByStatus(updated).active).toBe(3);
+    expect(countCardsByStatus(updated).active).toBe(6);
     expect(countCardsByStatus(updated).queued).toBe(2);
   });
 
@@ -462,12 +492,15 @@ describe("coach flow", () => {
       [
         { ...existingCard(1, 100, "pinned"), id: "duplicate" },
         { ...existingCard(2, 10, "active"), id: "duplicate" },
-        existingCard(3, 20, "active")
+        existingCard(3, 20, "active"),
+        existingCard(4, 30, "active"),
+        existingCard(5, 40, "active"),
+        existingCard(6, 50, "active")
       ],
       [scoredCandidate(9, 92)]
     );
 
-    expect(countCardsByStatus(updated).active).toBe(3);
+    expect(countCardsByStatus(updated).active).toBe(6);
     expect(updated.find((card) => card.id === "duplicate" && card.score === 100)?.status).toBe(
       "pinned"
     );

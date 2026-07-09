@@ -1,4 +1,5 @@
 import { buildLocalCoachContext, evaluateLocalRuleGate } from "@/lib/rule-gate";
+import { getActiveCardLimit } from "@/lib/coach-card";
 import {
   COACH_TRANSCRIPT_MAX_FINALS,
   COACH_TRANSCRIPT_MIN_FINALS,
@@ -201,7 +202,7 @@ function displayCardQuestions(cards: CoachCard[]): string[] {
   return cards
     .filter((card) => card.status === "active" || card.status === "pinned")
     .sort((a, b) => b.score - a.score)
-    .slice(0, 3)
+    .slice(0, getActiveCardLimit())
     .map((card) => redactInlineSecrets(card.question));
 }
 
