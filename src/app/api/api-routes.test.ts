@@ -483,7 +483,7 @@ describe("api routes", () => {
     expect(huge.status).toBe(422);
   });
 
-  it("fails closed when real LLM provider is selected without required env", async () => {
+  it("returns local fallback coach cards when real LLM provider env is missing", async () => {
     vi.stubEnv("RQC_LLM_PROVIDER", "anthropic");
     const sessionProfile = createSessionProfile(setupInput);
     const response = await postCoach(
@@ -509,11 +509,19 @@ describe("api routes", () => {
       )
     );
 
-    expect(response.status).toBe(422);
+    expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      error: {
-        code: "missing_env"
-      }
+      provider: "mock",
+      diagnostic: {
+        code: "missing_env",
+        category: "llm",
+        provider: "anthropic"
+      },
+      cards: expect.arrayContaining([
+        expect.objectContaining({
+          question: expect.stringContaining("確認")
+        })
+      ])
     });
   });
 
