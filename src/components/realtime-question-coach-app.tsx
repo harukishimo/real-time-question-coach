@@ -407,7 +407,7 @@ export function RealtimeQuestionCoachApp() {
       }>("/api/coach", {
         sessionProfile: activeSessionProfile,
         transcriptSegments: nextSegments,
-        existingCards: fallbackCards,
+        existingCards: activeCards,
         lastLlmCallAt: activeLastLlmCallAt,
         manualRecheck
       });

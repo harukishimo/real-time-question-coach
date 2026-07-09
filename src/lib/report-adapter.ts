@@ -63,7 +63,16 @@ const REPORT_JSON_SCHEMA = {
 export const DEFAULT_REPORT_LLM_TIMEOUT_MS = 45_000;
 
 function redactInlineSecrets(value: string): string {
-  return value.replace(/(sk-[a-zA-Z0-9_-]{8,}|Bearer\s+[a-zA-Z0-9._-]+)/g, "[REDACTED]");
+  return value
+    .replace(/sk-(?:proj-)?[a-zA-Z0-9_-]{8,}/g, "[REDACTED]")
+    .replace(/\bBearer\s+[a-zA-Z0-9._~+/=-]{10,}/gi, "[REDACTED]")
+    .replace(
+      /\b(?:api[_-]?key|token|password|passwd|secret|client_secret)\s*[:=]\s*["']?[^"'\s,;]{6,}/gi,
+      "[REDACTED]"
+    )
+    .replace(/\bAKIA[0-9A-Z]{16}\b/g, "[REDACTED]")
+    .replace(/\beyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\b/g, "[REDACTED]")
+    .replace(/\b[a-zA-Z0-9_-]{48,}\b/g, "[REDACTED]");
 }
 
 export function buildReportLlmPayload(input: ReportAdapterInput): ReportLlmPayload {

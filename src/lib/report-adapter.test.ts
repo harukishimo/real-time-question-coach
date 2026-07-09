@@ -64,12 +64,13 @@ describe("LLM report adapter", () => {
     const payload = buildReportLlmPayload({
       sessionProfile: {
         ...profile,
-        purpose: "sk-secret-report-purpose"
+        purpose: "sk-secret-report-purpose api_key=report123456 password=reportpass client_secret=reportsecret"
       },
       transcriptSegments: [
         {
           ...segment,
-          text: "Bearer report.token.value と sk-secret-report-transcript"
+          text:
+            "Bearer reporttokenvalue123456 と sk-secret-report-transcript と AKIA1234567890ABCDEF"
         }
       ],
       cards: [
@@ -81,7 +82,11 @@ describe("LLM report adapter", () => {
     });
 
     expect(JSON.stringify(payload)).not.toContain("sk-secret");
-    expect(JSON.stringify(payload)).not.toContain("Bearer report.token.value");
+    expect(JSON.stringify(payload)).not.toContain("api_key=");
+    expect(JSON.stringify(payload)).not.toContain("password=");
+    expect(JSON.stringify(payload)).not.toContain("client_secret=");
+    expect(JSON.stringify(payload)).not.toContain("Bearer reporttokenvalue123456");
+    expect(JSON.stringify(payload)).not.toContain("AKIA1234567890ABCDEF");
     expect(JSON.stringify(payload)).toContain("[REDACTED]");
   });
 

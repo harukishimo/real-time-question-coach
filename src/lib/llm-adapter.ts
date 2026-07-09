@@ -1,4 +1,4 @@
-import { evaluateLocalRuleGate } from "@/lib/rule-gate";
+import { buildLocalCoachContext, evaluateLocalRuleGate } from "@/lib/rule-gate";
 import { getRecentConversationBuffer } from "@/lib/transcript";
 import {
   createMissingEnvDiagnostic,
@@ -59,7 +59,24 @@ export type CoachLlmPayload = {
     speaker: string;
     text: string;
   }>;
-  existingCardQuestions: string[];
+  latestFinalTranscript: {
+    speaker: string;
+    text: string;
+  } | null;
+  unconfirmedIssues: string[];
+  triggerReasons: string[];
+  localCandidateSeeds: Array<{
+    title: string;
+    question: string;
+    reason: string;
+    priority: string;
+    score: number;
+    ruleIds: string[];
+  }>;
+  duplicatePrevention: {
+    coveredTopics: string[];
+    activeQuestions: string[];
+  };
   maxCandidates: 3;
 };
 
@@ -96,7 +113,16 @@ function stripTags(value: string): string {
 }
 
 function redactInlineSecrets(value: string): string {
-  return value.replace(/(sk-[a-zA-Z0-9_-]{8,}|Bearer\s+[a-zA-Z0-9._-]+)/g, "[REDACTED]");
+  return value
+    .replace(/sk-(?:proj-)?[a-zA-Z0-9_-]{8,}/g, "[REDACTED]")
+    .replace(/\bBearer\s+[a-zA-Z0-9._~+/=-]{10,}/gi, "[REDACTED]")
+    .replace(
+      /\b(?:api[_-]?key|token|password|passwd|secret|client_secret)\s*[:=]\s*["']?[^"'\s,;]{6,}/gi,
+      "[REDACTED]"
+    )
+    .replace(/\bAKIA[0-9A-Z]{16}\b/g, "[REDACTED]")
+    .replace(/\beyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\b/g, "[REDACTED]")
+    .replace(/\b[a-zA-Z0-9_-]{48,}\b/g, "[REDACTED]");
 }
 
 function questionLooksSafe(question: string): boolean {
@@ -104,7 +130,63 @@ function questionLooksSafe(question: string): boolean {
   return trimmed.endsWith("？") || trimmed.endsWith("?") || trimmed.endsWith("か");
 }
 
+function displayCardQuestions(cards: CoachCard[]): string[] {
+  return cards
+    .filter((card) => card.status === "active" || card.status === "pinned")
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3)
+    .map((card) => redactInlineSecrets(card.question));
+}
+
+function collectCoveredTopics(sessionProfile: SessionProfile, cards: CoachCard[]): string[] {
+  const searchableTerms = [
+    ...sessionProfile.mustCheckItems,
+    ...sessionProfile.playbookMustCheck,
+    ...sessionProfile.importantTerms,
+    ...sessionProfile.ambiguousTerms
+  ];
+  const cardText = cards
+    .map((card) => `${card.title}\n${card.question}\n${card.reason}`)
+    .join("\n");
+
+  return [...new Set(searchableTerms)]
+    .filter((term) => term.length > 0 && cardText.includes(term))
+    .map(redactInlineSecrets)
+    .slice(0, 16);
+}
+
+function candidateTouchesCoveredTopic(
+  candidate: CoachCardCandidate,
+  coveredTopics: string[]
+): boolean {
+  const candidateText = `${candidate.title}\n${candidate.question}\n${candidate.reason}`;
+  return coveredTopics.some((topic) => topic.length > 0 && candidateText.includes(topic));
+}
+
+function removeDuplicateTopicCandidates(
+  candidates: CoachCardCandidate[],
+  sessionProfile: SessionProfile,
+  existingCards: CoachCard[]
+): CoachCardCandidate[] {
+  const coveredTopics = collectCoveredTopics(sessionProfile, existingCards);
+  const activeQuestions = new Set(displayCardQuestions(existingCards));
+
+  return candidates.filter(
+    (candidate) =>
+      !activeQuestions.has(candidate.question) &&
+      !candidateTouchesCoveredTopic(candidate, coveredTopics)
+  );
+}
+
 export function buildCoachLlmPayload(input: CoachAdapterInput): CoachLlmPayload {
+  const recentTranscript = getRecentConversationBuffer(input.transcriptSegments, 6);
+  const context = buildLocalCoachContext({
+    sessionProfile: input.sessionProfile,
+    finalSegments: input.transcriptSegments.filter((segment) => segment.isFinal),
+    existingCards: input.existingCards
+  });
+  const activeQuestions = displayCardQuestions(input.existingCards);
+
   return {
     schemaVersion: "rqc.coach.v1",
     task: "generate_question_cards",
@@ -117,11 +199,30 @@ export function buildCoachLlmPayload(input: CoachAdapterInput): CoachLlmPayload 
       importantTerms: input.sessionProfile.importantTerms.slice(0, 24).map(redactInlineSecrets),
       ambiguousTerms: input.sessionProfile.ambiguousTerms.slice(0, 16).map(redactInlineSecrets)
     },
-    recentTranscript: getRecentConversationBuffer(input.transcriptSegments, 6).map((segment) => ({
+    recentTranscript: recentTranscript.map((segment) => ({
       speaker: segment.speaker.label,
       text: redactInlineSecrets(segment.text)
     })),
-    existingCardQuestions: input.existingCards.map((card) => redactInlineSecrets(card.question)).slice(-8),
+    latestFinalTranscript: context.latestFinal
+      ? {
+          speaker: context.latestFinal.speaker.label,
+          text: redactInlineSecrets(context.latestFinal.text)
+        }
+      : null,
+    unconfirmedIssues: context.unconfirmedIssues.slice(0, 8).map(redactInlineSecrets),
+    triggerReasons: [...new Set(context.candidateSeeds.flatMap((candidate) => candidate.ruleIds))].slice(0, 6),
+    localCandidateSeeds: context.candidateSeeds.slice(0, 3).map((candidate) => ({
+      title: redactInlineSecrets(candidate.title),
+      question: redactInlineSecrets(candidate.question),
+      reason: redactInlineSecrets(candidate.reason),
+      priority: candidate.priority,
+      score: candidate.score,
+      ruleIds: candidate.ruleIds.slice(0, 4)
+    })),
+    duplicatePrevention: {
+      coveredTopics: collectCoveredTopics(input.sessionProfile, input.existingCards),
+      activeQuestions
+    },
     maxCandidates: 3
   };
 }
@@ -310,7 +411,7 @@ async function callOpenAiCoach(input: CoachAdapterInput, options: CoachAdapterOp
         {
           role: "system",
           content:
-            "Return only schema-valid Japanese question card candidates. Do not include meeting minutes."
+            "Return only schema-valid Japanese question card candidates. Do not include meeting minutes. Prioritize latestFinalTranscript, triggerReasons, unconfirmedIssues, and localCandidateSeeds. Do not repeat duplicatePrevention.activeQuestions or duplicatePrevention.coveredTopics. If the latest transcript is weakly related to the session purpose, return at most one bridge question instead of repeating checklist questions."
         },
         {
           role: "user",
@@ -350,7 +451,7 @@ async function callAnthropicCoach(input: CoachAdapterInput, options: CoachAdapte
       model: options.model,
       max_tokens: 800,
       system:
-        "Return Japanese question card candidates via the provided tool. Do not include meeting minutes.",
+          "Return Japanese question card candidates via the provided tool. Do not include meeting minutes. Prioritize latestFinalTranscript, triggerReasons, unconfirmedIssues, and localCandidateSeeds. Do not repeat duplicatePrevention.activeQuestions or duplicatePrevention.coveredTopics. If the latest transcript is weakly related to the session purpose, return at most one bridge question instead of repeating checklist questions.",
       messages: [
         {
           role: "user",
@@ -422,7 +523,11 @@ function realCoachAdapter(provider: Exclude<LlmProvider, "mock">): CoachAdapter 
           provider === "openai"
             ? await callOpenAiCoach(input, options)
             : await callAnthropicCoach(input, options);
-        const candidates = parseCoachProviderResponse(raw, sourceSegmentIds);
+        const candidates = removeDuplicateTopicCandidates(
+          parseCoachProviderResponse(raw, sourceSegmentIds),
+          input.sessionProfile,
+          input.existingCards
+        );
 
         if (candidates.length === 0) {
           return {

@@ -8,7 +8,7 @@ import {
 } from "@/lib/llm-adapter";
 import { createSessionProfile } from "@/lib/session-profile";
 import { createTranscriptSegment } from "@/lib/transcript";
-import type { CoachCardCandidate } from "@/lib/types";
+import type { CoachCard, CoachCardCandidate } from "@/lib/types";
 
 const profile = createSessionProfile({
   conversationType: "requirements",
@@ -40,6 +40,25 @@ function candidate(index: number): CoachCardCandidate {
   };
 }
 
+function existingCard(
+  index: number,
+  overrides: Partial<CoachCard> = {}
+): CoachCard {
+  return {
+    id: `existing-${index}`,
+    title: `既存確認${index}`,
+    question: `既存質問${index}は確認済みですか？`,
+    reason: "existing test",
+    priority: "medium",
+    score: 70 + index,
+    status: "active",
+    sourceSegmentIds: [finalSegment.id],
+    ruleIds: ["existing-test"],
+    createdAt: new Date(0).toISOString(),
+    ...overrides
+  };
+}
+
 describe("LLM coach adapter", () => {
   it("minimizes payload and excludes session id, auth, and provider secrets", () => {
     const payload = buildCoachLlmPayload({
@@ -59,18 +78,25 @@ describe("LLM coach adapter", () => {
     expect(JSON.stringify(payload)).not.toContain(profile.id);
     expect(JSON.stringify(payload)).not.toContain("OPENAI_API_KEY");
     expect(payload.recentTranscript).toHaveLength(1);
+    expect(payload.latestFinalTranscript?.text).toBe(finalSegment.text);
+    expect(payload.unconfirmedIssues.length).toBeGreaterThan(0);
+    expect(payload.triggerReasons.length).toBeGreaterThan(0);
+    expect(payload.localCandidateSeeds.length).toBeLessThanOrEqual(3);
+    expect(payload).not.toHaveProperty("existingCardQuestions");
   });
 
   it("redacts secret-looking text from LLM payload fields", () => {
     const payload = buildCoachLlmPayload({
       sessionProfile: {
         ...profile,
-        purpose: "sk-secret-in-purpose を送らない"
+        purpose:
+          "sk-secret-in-purpose api_key=abc123456789 password=hunter2 client_secret=xyz987654321 を送らない"
       },
       transcriptSegments: [
         {
           ...finalSegment,
-          text: "Bearer abc.def.ghi と sk-secret-in-transcript を含む発話"
+          text:
+            "Bearer abcdefghijklmnopqrstuvwxyz と sk-secret-in-transcript と AKIA1234567890ABCDEF と eyJaaaaaaaaaaaa.bbbbbbbbbbbb.cccccccccccc を含む発話"
         }
       ],
       existingCards: [
@@ -90,8 +116,42 @@ describe("LLM coach adapter", () => {
     });
 
     expect(JSON.stringify(payload)).not.toContain("sk-secret");
-    expect(JSON.stringify(payload)).not.toContain("Bearer abc.def.ghi");
+    expect(JSON.stringify(payload)).not.toContain("api_key=");
+    expect(JSON.stringify(payload)).not.toContain("password=");
+    expect(JSON.stringify(payload)).not.toContain("client_secret=");
+    expect(JSON.stringify(payload)).not.toContain("Bearer abcdefghijklmnopqrstuvwxyz");
+    expect(JSON.stringify(payload)).not.toContain("AKIA1234567890ABCDEF");
+    expect(JSON.stringify(payload)).not.toContain("eyJaaaaaaaaaaaa.bbbbbbbbbbbb.cccccccccccc");
     expect(JSON.stringify(payload)).toContain("[REDACTED]");
+  });
+
+  it("uses compact duplicate-prevention context instead of stale previous questions", () => {
+    const payload = buildCoachLlmPayload({
+      sessionProfile: profile,
+      transcriptSegments: [finalSegment],
+      existingCards: [
+        existingCard(1, {
+          status: "done",
+          question: "古い完了カードの長い質問をLLMへ再送しませんか？"
+        }),
+        existingCard(2, {
+          status: "queued",
+          question: "保存方針について後で確認しますか？"
+        }),
+        existingCard(3, {
+          status: "pinned",
+          question: "権限について現在表示している質問ですか？"
+        })
+      ]
+    });
+
+    expect(payload).not.toHaveProperty("existingCardQuestions");
+    expect(JSON.stringify(payload)).not.toContain("古い完了カードの長い質問");
+    expect(JSON.stringify(payload)).not.toContain("保存方針について後で確認");
+    expect(payload.duplicatePrevention.activeQuestions).toEqual([
+      "権限について現在表示している質問ですか？"
+    ]);
+    expect(payload.duplicatePrevention.coveredTopics).toContain("権限");
   });
 
   it("validates and caps provider candidates to three safe question cards", () => {
@@ -218,7 +278,65 @@ describe("LLM coach adapter", () => {
     expect(result.diagnostic).toBeUndefined();
     expect(result.candidates).toHaveLength(1);
     expect(String(capturedBody)).not.toContain("server-key");
+    const requestBody = JSON.parse(String(capturedBody)) as {
+      input: Array<{ role: string; content: string }>;
+    };
+    const userPayload = JSON.parse(requestBody.input[1].content) as Record<string, unknown>;
+    expect(requestBody.input[0].content).toContain("duplicatePrevention.activeQuestions");
+    expect(userPayload).toHaveProperty("latestFinalTranscript");
+    expect(userPayload).toHaveProperty("unconfirmedIssues");
+    expect(userPayload).toHaveProperty("triggerReasons");
+    expect(userPayload).toHaveProperty("localCandidateSeeds");
+    expect(userPayload).toHaveProperty("duplicatePrevention");
+    expect(userPayload).not.toHaveProperty("existingCardQuestions");
     timeoutSpy.mockRestore();
+  });
+
+  it("filters provider candidates that duplicate already covered topics", async () => {
+    const fetcher = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          output_text: JSON.stringify({
+            candidates: [
+              {
+                ...candidate(1),
+                stableKey: "duplicate-topic",
+                question: "権限についてもう一度確認しますか？"
+              },
+              {
+                ...candidate(2),
+                stableKey: "fresh-topic",
+                title: "導入時期の確認",
+                question: "導入時期の希望日は決まっていますか？",
+                reason: "まだ導入時期が未確認です。",
+                ruleIds: ["provider-test"]
+              }
+            ]
+          })
+        }),
+        { status: 200 }
+      )
+    );
+    const result = await getCoachAdapter("openai").generateCards(
+      {
+        sessionProfile: profile,
+        transcriptSegments: [finalSegment],
+        existingCards: [
+          existingCard(1, {
+            title: "権限の確認",
+            question: "権限について現在表示している質問ですか？"
+          })
+        ],
+        lastLlmCallAt: 0
+      },
+      {
+        apiKey: "server-key",
+        model: "gpt-5-mini",
+        fetcher: fetcher as unknown as typeof fetch
+      }
+    );
+
+    expect(result.candidates.map((item) => item.stableKey)).toEqual(["fresh-topic"]);
   });
 
   it("normalizes provider schema mismatch into a safe diagnostic", async () => {

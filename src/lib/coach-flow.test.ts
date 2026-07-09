@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { applyCoachCardCandidates, countCardsByStatus, updateCardStatus } from "@/lib/coach-card";
 import { createDummyTranscriptPair } from "@/lib/dummy-transcript";
-import { decideCoachDispatch, evaluateLocalRuleGate } from "@/lib/rule-gate";
+import { buildLocalCoachContext, decideCoachDispatch, evaluateLocalRuleGate } from "@/lib/rule-gate";
 import { createSessionProfile } from "@/lib/session-profile";
 import type { CoachCard, CoachCardCandidate } from "@/lib/types";
 
@@ -97,7 +97,7 @@ describe("coach flow", () => {
     );
   });
 
-  it("fills local fallback cards with playbook question templates", () => {
+  it("uses a bridge card instead of repeated checklist cards when latest transcript is unrelated", () => {
     const result = evaluateLocalRuleGate({
       sessionProfile: profile,
       finalSegments: [
@@ -106,6 +106,32 @@ describe("coach flow", () => {
           sequence: 1,
           speaker: { id: "participant", label: "相手", source: "provider", confidence: 0.9 },
           text: "まずは全体像から順番に話します。",
+          isFinal: true,
+          startedAtMs: 0,
+          endedAtMs: 1000,
+          createdAt: new Date(0).toISOString()
+        }
+      ],
+      existingCards: [],
+      now: 20_000
+    });
+
+    expect(result.shouldCallLlm).toBe(true);
+    expect(result.reasons).toEqual(["context-bridge"]);
+    expect(result.candidateSeeds).toHaveLength(1);
+    expect(result.candidateSeeds[0].question).toContain(profile.purpose);
+    expect(result.candidateSeeds[0].question).not.toContain("MVPで必ず成立させる業務成果");
+  });
+
+  it("fills local fallback cards with playbook questions only when latest transcript has knowledge signals", () => {
+    const result = evaluateLocalRuleGate({
+      sessionProfile: profile,
+      finalSegments: [
+        {
+          id: "seg-signal-final",
+          sequence: 1,
+          speaker: { id: "participant", label: "相手", source: "provider", confidence: 0.9 },
+          text: "履歴を残す必要があります。",
           isFinal: true,
           startedAtMs: 0,
           endedAtMs: 1000,
@@ -145,6 +171,47 @@ describe("coach flow", () => {
     });
 
     expect(result.candidateSeeds.map((seed) => seed.question)).not.toContain(profile.mustAskTemplates[0]);
+  });
+
+  it("suppresses repeated topics across active, queued, and done cards", () => {
+    const final = {
+      id: "seg-topic-final",
+      sequence: 1,
+      speaker: { id: "participant", label: "相手", source: "provider", confidence: 0.9 },
+      text: "権限について話します。",
+      isFinal: true,
+      startedAtMs: 0,
+      endedAtMs: 1000,
+      createdAt: new Date(0).toISOString()
+    } as const;
+    const context = buildLocalCoachContext({
+      sessionProfile: profile,
+      finalSegments: [final],
+      existingCards: [
+        {
+          ...existingCard(1, 90, "active"),
+          title: "権限の確認",
+          question: "権限について誰が判断しますか？"
+        },
+        {
+          ...existingCard(2, 80, "queued"),
+          title: "保存方針の確認",
+          question: "保存方針は確認済みですか？"
+        },
+        {
+          ...existingCard(3, 70, "done"),
+          title: "導入時期の確認",
+          question: "導入時期は確認済みですか？"
+        }
+      ]
+    });
+
+    expect(context.matchedImportantTerms).not.toContain("権限");
+    expect(context.unconfirmedIssues).not.toContain("権限");
+    expect(context.unconfirmedIssues).not.toContain("保存方針");
+    expect(context.candidateSeeds.map((seed) => seed.question).join("\n")).not.toContain(
+      "権限について、誰がいつ判断"
+    );
   });
 
   it("keeps active coach cards capped at three", () => {
