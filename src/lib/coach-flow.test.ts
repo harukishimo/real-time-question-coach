@@ -97,6 +97,56 @@ describe("coach flow", () => {
     );
   });
 
+  it("fills local fallback cards with playbook question templates", () => {
+    const result = evaluateLocalRuleGate({
+      sessionProfile: profile,
+      finalSegments: [
+        {
+          id: "seg-general-final",
+          sequence: 1,
+          speaker: { id: "participant", label: "相手", source: "provider", confidence: 0.9 },
+          text: "まずは全体像から順番に話します。",
+          isFinal: true,
+          startedAtMs: 0,
+          endedAtMs: 1000,
+          createdAt: new Date(0).toISOString()
+        }
+      ],
+      existingCards: [],
+      now: 20_000
+    });
+
+    expect(result.shouldCallLlm).toBe(true);
+    expect(result.reasons).toContain("playbook-question");
+    expect(result.candidateSeeds.length).toBeGreaterThanOrEqual(2);
+    expect(result.candidateSeeds.some((seed) => seed.question.includes("MVP"))).toBe(true);
+  });
+
+  it("does not repeat playbook template questions already shown", () => {
+    const existing = existingCard(1, 90);
+    existing.question = profile.mustAskTemplates[0];
+
+    const result = evaluateLocalRuleGate({
+      sessionProfile: profile,
+      finalSegments: [
+        {
+          id: "seg-repeat-final",
+          sequence: 1,
+          speaker: { id: "participant", label: "相手", source: "provider", confidence: 0.9 },
+          text: "概要を共有します。",
+          isFinal: true,
+          startedAtMs: 0,
+          endedAtMs: 1000,
+          createdAt: new Date(0).toISOString()
+        }
+      ],
+      existingCards: [existing],
+      now: 20_000
+    });
+
+    expect(result.candidateSeeds.map((seed) => seed.question)).not.toContain(profile.mustAskTemplates[0]);
+  });
+
   it("keeps active coach cards capped at three", () => {
     const cards = applyCoachCardCandidates(
       [],

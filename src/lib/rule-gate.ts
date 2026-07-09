@@ -6,7 +6,7 @@ import type {
   TranscriptSegment
 } from "@/lib/types";
 
-const DEFAULT_COOLDOWN_MS = 15_000;
+const DEFAULT_COOLDOWN_MS = 8_000;
 
 function includesAny(text: string, terms: string[]): string[] {
   return terms.filter((term) => term.length > 0 && text.includes(term));
@@ -18,6 +18,10 @@ function hasHandledCardForTerm(cards: CoachCard[], term: string): boolean {
       (card.status === "done" || card.status === "dismissed") &&
       (card.title.includes(term) || card.question.includes(term))
   );
+}
+
+function hasAnyCardWithQuestion(cards: CoachCard[], question: string): boolean {
+  return cards.some((card) => card.question === question);
 }
 
 export function evaluateLocalRuleGate(input: {
@@ -110,6 +114,24 @@ export function evaluateLocalRuleGate(input: {
       ruleIds: ["must-check-gap"]
     });
   });
+
+  const remainingSlots = Math.max(0, 3 - candidateSeeds.length);
+  input.sessionProfile.mustAskTemplates
+    .filter((question) => !hasAnyCardWithQuestion(input.existingCards, question))
+    .filter((question) => !candidateSeeds.some((seed) => seed.question === question))
+    .slice(0, remainingSlots)
+    .forEach((question, index) => {
+      candidateSeeds.push({
+        stableKey: `playbook:${input.sessionProfile.knowledgeSetId}:${index}:${question.slice(0, 16)}`,
+        title: "ナレッジ推奨質問",
+        question,
+        reason: `${input.sessionProfile.playbookTitle}のナレッジに基づく確認候補です。`,
+        priority: "medium",
+        score: 68 - index,
+        sourceSegmentIds: [latestFinal.id],
+        ruleIds: ["playbook-question"]
+      });
+    });
 
   return {
     shouldCallLlm: candidateSeeds.length > 0,
