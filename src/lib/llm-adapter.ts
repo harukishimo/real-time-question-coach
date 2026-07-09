@@ -150,12 +150,30 @@ const COACH_SYSTEM_PROMPT = [
   "For transcript_window or manual_recheck reviewMode, inspect the whole recent window even when localCandidateSeeds is empty.",
   "Avoid a generic purpose-connection question when a concrete statement can be deepened.",
   "For each candidate, set topicId to a topicStates id, set targetDimension to one missing dimension, and include matching topic:<topic id> and deep-dive:<dimension> values in ruleIds.",
+  "Keep every title, question, and reason concise so the full structured response can be returned quickly.",
   "When one or more meaningful missing dimensions exist, return one to three candidates ordered by urgency.",
   "If the transcript does not support a useful follow-up, return an empty candidates array instead of inventing a checklist question.",
   "If the latest transcript is weakly related to the session purpose, return at most one bridge question."
 ].join(" ");
 
-export const DEFAULT_COACH_LLM_TIMEOUT_MS = 3_500;
+export const DEFAULT_COACH_LLM_TIMEOUT_MS = 15_000;
+export const OPENAI_COACH_MAX_OUTPUT_TOKENS = 1_200;
+
+export function getOpenAiCoachReasoning(
+  model: string | undefined
+): { effort: "minimal" | "none" } | undefined {
+  const normalized = model?.trim().toLowerCase();
+  if (!normalized || /-pro(?:-|$)/.test(normalized)) return undefined;
+
+  if (/^gpt-5(?:$|-mini(?:-|$)|-nano(?:-|$)|-\d{4})/.test(normalized)) {
+    return { effort: "minimal" };
+  }
+  if (/^gpt-5\.[1-9](?:$|-)/.test(normalized)) {
+    return { effort: "none" };
+  }
+
+  return undefined;
+}
 
 function stripTags(value: string): string {
   return value.replace(/<[^>]*>/g, "").trim();
@@ -564,6 +582,7 @@ async function callOpenAiCoach(
 ) {
   const fetcher = options.fetcher ?? fetch;
   const payload = buildCoachLlmPayload(input, dispatchReasons);
+  const reasoning = getOpenAiCoachReasoning(options.model);
   const response = await fetcher("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
@@ -573,6 +592,8 @@ async function callOpenAiCoach(
     signal: providerTimeoutSignal(options.timeoutMs),
     body: JSON.stringify({
       model: options.model,
+      max_output_tokens: OPENAI_COACH_MAX_OUTPUT_TOKENS,
+      ...(reasoning ? { reasoning } : {}),
       input: [
         {
           role: "system",

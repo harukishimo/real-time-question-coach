@@ -3,6 +3,8 @@ import {
   buildCoachLlmPayload,
   DEFAULT_COACH_LLM_TIMEOUT_MS,
   getCoachAdapter,
+  getOpenAiCoachReasoning,
+  OPENAI_COACH_MAX_OUTPUT_TOKENS,
   parseCoachProviderResponse,
   validateCoachCandidates
 } from "@/lib/llm-adapter";
@@ -62,6 +64,13 @@ function existingCard(
 }
 
 describe("LLM coach adapter", () => {
+  it("uses the lowest reasoning effort compatible with the configured OpenAI model", () => {
+    expect(getOpenAiCoachReasoning("gpt-5-mini")).toEqual({ effort: "minimal" });
+    expect(getOpenAiCoachReasoning("gpt-5.4-mini")).toEqual({ effort: "none" });
+    expect(getOpenAiCoachReasoning("gpt-5.4-pro")).toBeUndefined();
+    expect(getOpenAiCoachReasoning("gpt-4.1-mini")).toBeUndefined();
+  });
+
   it("minimizes payload and excludes session id, auth, and provider secrets", () => {
     const payload = buildCoachLlmPayload({
       sessionProfile: profile,
@@ -329,12 +338,15 @@ describe("LLM coach adapter", () => {
     );
 
     expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(DEFAULT_COACH_LLM_TIMEOUT_MS).toBe(15_000);
     expect(timeoutSpy).toHaveBeenCalledWith(DEFAULT_COACH_LLM_TIMEOUT_MS);
     expect(result.diagnostic).toBeUndefined();
     expect(result.candidates).toHaveLength(1);
     expect(String(capturedBody)).not.toContain("server-key");
     const requestBody = JSON.parse(String(capturedBody)) as {
       input: Array<{ role: string; content: string }>;
+      max_output_tokens: number;
+      reasoning?: { effort: string };
     };
     const userPayload = JSON.parse(requestBody.input[1].content) as Record<string, unknown>;
     expect(requestBody.input[0].content).toContain("duplicatePrevention.activeQuestions");
@@ -342,6 +354,8 @@ describe("LLM coach adapter", () => {
     expect(requestBody.input[0].content).toContain("no predefined important or ambiguous keyword");
     expect(requestBody.input[0].content).toContain("topic:<topic id>");
     expect(requestBody.input[0].content).toContain("empty candidates array");
+    expect(requestBody.max_output_tokens).toBe(OPENAI_COACH_MAX_OUTPUT_TOKENS);
+    expect(requestBody.reasoning).toEqual({ effort: "minimal" });
     expect(userPayload.reviewMode).toBe("local_signal");
     expect(userPayload).toHaveProperty("latestFinalTranscript");
     expect(userPayload).toHaveProperty("unconfirmedIssues");
