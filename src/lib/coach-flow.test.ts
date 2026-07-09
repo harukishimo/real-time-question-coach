@@ -175,6 +175,40 @@ describe("coach flow", () => {
     });
   });
 
+  it("starts an LLM transcript review for an ordinary final without keyword or checklist seeds", () => {
+    const noSeedProfile = {
+      ...profile,
+      importantTerms: [],
+      ambiguousTerms: [],
+      mustCheckItems: [],
+      playbookMustCheck: [],
+      mustAskTemplates: []
+    };
+    const result = evaluateLocalRuleGate({
+      sessionProfile: noSeedProfile,
+      finalSegments: [
+        {
+          id: "seg-ordinary-final",
+          sequence: 1,
+          speaker: { id: "participant", label: "相手", source: "provider", confidence: 0.9 },
+          text: "現在は担当者が申請内容を確認しています。",
+          isFinal: true,
+          startedAtMs: 0,
+          endedAtMs: 1000,
+          createdAt: new Date(0).toISOString()
+        }
+      ],
+      existingCards: [],
+      now: 20_000
+    });
+
+    expect(result).toMatchObject({
+      shouldCallLlm: true,
+      reasons: ["initial_transcript_review"],
+      candidateSeeds: []
+    });
+  });
+
   it("manual recheck reaches the provider even when there is no local candidate", () => {
     const bridgeCard = {
       ...existingCard(1, 62),

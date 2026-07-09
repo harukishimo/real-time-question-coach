@@ -119,17 +119,16 @@ function buildTopicState(input: {
 function evidenceForTopic(
   label: string,
   sessionProfile: SessionProfile,
-  transcriptWindow: TranscriptSegment[]
+  transcriptHistory: TranscriptSegment[]
 ): CoachTopicEvidence[] {
   const terms = topicTerms(label, sessionProfile);
 
-  return transcriptWindow
+  return transcriptHistory
     .filter((segment) => terms.some((term) => segment.text.includes(term)))
     .map((segment) => ({
       speaker: segment.speaker.label,
       text: segment.text
-    }))
-    .slice(-2);
+    }));
 }
 
 function topicPriority(state: CoachTopicState): number {
@@ -150,7 +149,11 @@ function topicPriority(state: CoachTopicState): number {
 export function buildCoachTopicStates(input: {
   sessionProfile: SessionProfile;
   transcriptWindow: TranscriptSegment[];
+  transcriptHistory?: TranscriptSegment[];
 }): CoachTopicState[] {
+  const transcriptHistory = getFinalTranscriptSegments(
+    input.transcriptHistory ?? input.transcriptWindow
+  );
   const configuredTopics = [
     ...input.sessionProfile.mustCheckItems.map((label, index) => ({
       id: `setup:${index}`,
@@ -169,7 +172,7 @@ export function buildCoachTopicStates(input: {
   const configuredStates = configuredTopics.map((topic) =>
     buildTopicState({
       ...topic,
-      evidence: evidenceForTopic(topic.label, input.sessionProfile, input.transcriptWindow)
+      evidence: evidenceForTopic(topic.label, input.sessionProfile, transcriptHistory)
     })
   );
   const conversationStates = input.transcriptWindow

@@ -43,6 +43,8 @@ import type {
 
 type Screen = "login" | "setup" | "session" | "report";
 
+const COACH_GATE_HEARTBEAT_MS = 1_000;
+
 const initialSetup = {
   conversationType: "requirements" as ConversationType,
   industry: "it" as Industry,
@@ -130,7 +132,15 @@ export function RealtimeQuestionCoachApp() {
   const coachInFlightRef = useRef(false);
   const sessionProfileRef = useRef<SessionProfile | null>(null);
   const cardsRef = useRef<CoachCard[]>([]);
+  const segmentsRef = useRef<TranscriptSegment[]>([]);
   const lastLlmCallAtRef = useRef(0);
+  const runCoachRef = useRef<
+    (
+      nextSegments: TranscriptSegment[],
+      manualRecheck?: boolean,
+      silentWhenSkipped?: boolean
+    ) => Promise<void>
+  >(async () => {});
   const sttConnectionRef = useRef<RealtimeSttConnection | null>(null);
   const sttSequenceRef = useRef(0);
   const sttSequenceByProviderItemRef = useRef<Map<string, number>>(new Map());
@@ -161,6 +171,10 @@ export function RealtimeQuestionCoachApp() {
   useEffect(() => {
     cardsRef.current = cards;
   }, [cards]);
+
+  useEffect(() => {
+    segmentsRef.current = segments;
+  }, [segments]);
 
   useEffect(() => {
     lastLlmCallAtRef.current = lastLlmCallAt;
@@ -235,6 +249,9 @@ export function RealtimeQuestionCoachApp() {
     setCoachInFlight(false);
     lastDispatchKeyRef.current = null;
     coachInFlightRef.current = false;
+    cardsRef.current = [];
+    segmentsRef.current = [];
+    lastLlmCallAtRef.current = 0;
     sttSequenceRef.current = 0;
     sttSequenceByProviderItemRef.current = new Map();
     setScreen("session");
@@ -342,6 +359,7 @@ export function RealtimeQuestionCoachApp() {
           setPartialSegment(null);
           setSegments((current) => {
             const nextSegments = mergeTranscriptSegment(current, segment);
+            segmentsRef.current = nextSegments;
             queueMicrotask(() => {
               void runCoach(nextSegments);
             });
@@ -360,7 +378,11 @@ export function RealtimeQuestionCoachApp() {
     }
   }
 
-  async function runCoach(nextSegments: TranscriptSegment[], manualRecheck = false) {
+  async function runCoach(
+    nextSegments: TranscriptSegment[],
+    manualRecheck = false,
+    silentWhenSkipped = false
+  ) {
     const activeSessionProfile = sessionProfileRef.current ?? sessionProfile;
     if (!activeSessionProfile) return;
     const activeCards = cardsRef.current;
@@ -377,7 +399,9 @@ export function RealtimeQuestionCoachApp() {
     });
 
     if (!dispatch.shouldDispatch) {
-      setStatusMessage(`Coach gate: ${dispatch.reasons.join(", ")}`);
+      if (!silentWhenSkipped) {
+        setStatusMessage(`Coach gate: ${dispatch.reasons.join(", ")}`);
+      }
       return;
     }
 
@@ -437,6 +461,22 @@ export function RealtimeQuestionCoachApp() {
     }
   }
 
+  useEffect(() => {
+    runCoachRef.current = runCoach;
+  });
+
+  useEffect(() => {
+    if (screen !== "session" || !sessionProfile) return;
+
+    const intervalId = globalThis.setInterval(() => {
+      const currentSegments = segmentsRef.current;
+      if (!currentSegments.some((segment) => segment.isFinal)) return;
+      void runCoachRef.current(currentSegments, false, true);
+    }, COACH_GATE_HEARTBEAT_MS);
+
+    return () => globalThis.clearInterval(intervalId);
+  }, [screen, sessionProfile]);
+
   async function addNextDummyTranscript() {
     if (!sessionProfile) return;
 
@@ -445,6 +485,7 @@ export function RealtimeQuestionCoachApp() {
 
     const nextSegments = mergeTranscriptSegment(segments, pair.final);
     setSegments(nextSegments);
+    segmentsRef.current = nextSegments;
     setPartialSegment(null);
     setDummyIndex((value) => value + 1);
     await runCoach(nextSegments);

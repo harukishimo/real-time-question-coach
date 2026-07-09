@@ -223,6 +223,15 @@ export function evaluateLocalRuleGate(input: {
     };
   }
 
+  if (lastLlmCallAt === 0) {
+    return {
+      shouldCallLlm: true,
+      reasons: ["initial_transcript_review"],
+      candidateSeeds: [],
+      nextAllowedAt
+    };
+  }
+
   if (lastLlmCallAt > 0 && now >= lastLlmCallAt + contextReviewIntervalMs) {
     return {
       shouldCallLlm: true,

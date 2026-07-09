@@ -267,7 +267,8 @@ export function buildCoachLlmPayload(
   });
   const topicStates = buildCoachTopicStates({
     sessionProfile: input.sessionProfile,
-    transcriptWindow: recentTranscript
+    transcriptWindow: recentTranscript,
+    transcriptHistory: input.transcriptSegments
   });
   const activeQuestions = displayCardQuestions(input.existingCards);
   const triggerReasons = [
@@ -276,7 +277,9 @@ export function buildCoachLlmPayload(
   ];
   const reviewMode = input.manualRecheck
     ? "manual_recheck"
-    : triggerReasons.includes("transcript_window_review")
+    : triggerReasons.some((reason) =>
+        ["initial_transcript_review", "transcript_window_review"].includes(reason)
+      )
       ? "transcript_window"
       : "local_signal";
 

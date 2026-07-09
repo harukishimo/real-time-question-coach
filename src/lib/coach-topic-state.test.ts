@@ -83,4 +83,25 @@ describe("coach topic state", () => {
     expect(conversation?.missingDimensions).toContain("why");
     expect(conversation?.evidence[0].text).toContain("ランニングレース");
   });
+
+  it("keeps configured-topic answers from session history outside the recent LLM window", () => {
+    const transcriptWindow = [
+      segment(40, "直近では別の運用について話しています。", 100_000)
+    ];
+    const states = buildCoachTopicStates({
+      sessionProfile: profile,
+      transcriptWindow,
+      transcriptHistory: [
+        segment(1, "導入時期は管理チームが担当します。", 1_000),
+        ...transcriptWindow
+      ]
+    });
+    const topic = states.find((state) => state.label === "導入時期");
+
+    expect(topic).toMatchObject({
+      status: "partial",
+      coveredDimensions: ["who", "when"]
+    });
+    expect(topic?.evidence[0].text).toContain("管理チーム");
+  });
 });
