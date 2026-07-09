@@ -36,7 +36,9 @@ function candidate(index: number): CoachCardCandidate {
     priority: "high",
     score: 90 + index,
     sourceSegmentIds: [finalSegment.id],
-    ruleIds: ["provider-test"]
+    ruleIds: ["provider-test"],
+    topicId: `provider:${index}`,
+    targetDimension: "why"
   };
 }
 
@@ -78,11 +80,63 @@ describe("LLM coach adapter", () => {
     expect(JSON.stringify(payload)).not.toContain(profile.id);
     expect(JSON.stringify(payload)).not.toContain("OPENAI_API_KEY");
     expect(payload.recentTranscript).toHaveLength(1);
+    expect(payload.transcriptWindow).toMatchObject({
+      targetDurationMs: 90_000,
+      minFinalSegments: 20,
+      maxFinalSegments: 30,
+      includedFinalSegments: 1
+    });
+    expect(payload.topicStates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "conversation",
+          status: "partial"
+        })
+      ])
+    );
     expect(payload.latestFinalTranscript?.text).toBe(finalSegment.text);
     expect(payload.unconfirmedIssues.length).toBeGreaterThan(0);
     expect(payload.triggerReasons.length).toBeGreaterThan(0);
     expect(payload.localCandidateSeeds.length).toBeLessThanOrEqual(3);
     expect(payload).not.toHaveProperty("existingCardQuestions");
+  });
+
+  it("sends a bounded multi-turn transcript window and topic evidence for deep dives", () => {
+    const transcriptSegments = Array.from({ length: 40 }, (_, index) =>
+      createTranscriptSegment({
+        sequence: index + 1,
+        text:
+          index === 39
+            ? "導入時期は来月末までで、担当チームは営業部です。"
+            : `通常の確定発話${index + 1}です。`,
+        isFinal: true,
+        startedAtMs: index * 2_000,
+        endedAtMs: index * 2_000 + 1_000
+      })
+    );
+    const payload = buildCoachLlmPayload({
+      sessionProfile: profile,
+      transcriptSegments,
+      existingCards: []
+    });
+    const setupTopic = payload.topicStates.find((topic) => topic.label === "権限");
+    const conversationTopics = payload.topicStates.filter(
+      (topic) => topic.source === "conversation"
+    );
+
+    expect(payload.recentTranscript).toHaveLength(30);
+    expect(payload.recentTranscript.at(-1)?.text).toContain("導入時期");
+    expect(payload.transcriptWindow.includedFinalSegments).toBe(30);
+    expect(conversationTopics.length).toBeGreaterThan(0);
+    expect(setupTopic).toMatchObject({
+      source: "session_setup",
+      status: "not_started"
+    });
+    expect(
+      payload.topicStates.some((topic) =>
+        topic.evidence.some((evidence) => evidence.text.includes("担当チーム"))
+      )
+    ).toBe(true);
   });
 
   it("redacts secret-looking text from LLM payload fields", () => {
@@ -152,6 +206,7 @@ describe("LLM coach adapter", () => {
       "権限について現在表示している質問ですか？"
     ]);
     expect(payload.duplicatePrevention.coveredTopics).toContain("権限");
+    expect(payload.duplicatePrevention.askedDeepDiveDimensions).toEqual([]);
   });
 
   it("validates and caps provider candidates to three safe question cards", () => {
@@ -284,10 +339,14 @@ describe("LLM coach adapter", () => {
     const userPayload = JSON.parse(requestBody.input[1].content) as Record<string, unknown>;
     expect(requestBody.input[0].content).toContain("duplicatePrevention.activeQuestions");
     expect(requestBody.input[0].content).toContain("recentTranscript");
+    expect(requestBody.input[0].content).toContain("no predefined important or ambiguous keyword");
+    expect(requestBody.input[0].content).toContain("topic:<topic id>");
     expect(requestBody.input[0].content).toContain("empty candidates array");
     expect(userPayload.reviewMode).toBe("local_signal");
     expect(userPayload).toHaveProperty("latestFinalTranscript");
     expect(userPayload).toHaveProperty("unconfirmedIssues");
+    expect(userPayload).toHaveProperty("topicStates");
+    expect(userPayload).toHaveProperty("transcriptWindow");
     expect(userPayload).toHaveProperty("triggerReasons");
     expect(userPayload).toHaveProperty("localCandidateSeeds");
     expect(userPayload).toHaveProperty("duplicatePrevention");
@@ -350,7 +409,7 @@ describe("LLM coach adapter", () => {
     expect(userPayload.triggerReasons).toEqual(["manual_recheck"]);
   });
 
-  it("filters provider candidates that duplicate already covered topics", async () => {
+  it("filters provider candidates that duplicate an already asked topic dimension", async () => {
     const fetcher = vi.fn(async () =>
       new Response(
         JSON.stringify({
@@ -359,7 +418,9 @@ describe("LLM coach adapter", () => {
               {
                 ...candidate(1),
                 stableKey: "duplicate-topic",
-                question: "権限についてもう一度確認しますか？"
+                question: "権限についてもう一度確認しますか？",
+                topicId: "setup:0",
+                targetDimension: "why"
               },
               {
                 ...candidate(2),
@@ -382,7 +443,9 @@ describe("LLM coach adapter", () => {
         existingCards: [
           existingCard(1, {
             title: "権限の確認",
-            question: "権限について現在表示している質問ですか？"
+            question: "権限について現在表示している質問ですか？",
+            topicId: "setup:0",
+            targetDimension: "why"
           })
         ],
         lastLlmCallAt: 0
@@ -395,6 +458,65 @@ describe("LLM coach adapter", () => {
     );
 
     expect(result.candidates.map((item) => item.stableKey)).toEqual(["fresh-topic"]);
+  });
+
+  it("allows a new missing dimension on an existing topic and filters the same dimension", async () => {
+    const fetcher = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          output_text: JSON.stringify({
+            candidates: [
+              {
+                ...candidate(1),
+                stableKey: "same-topic-new-dimension",
+                question: "権限が必要になった背景は何ですか？",
+                ruleIds: ["topic:setup:0", "deep-dive:why"],
+                topicId: "setup:0",
+                targetDimension: "why"
+              },
+              {
+                ...candidate(2),
+                stableKey: "same-topic-same-dimension",
+                question: "権限を持つ担当者は他にもいますか？",
+                ruleIds: ["topic:setup:0", "deep-dive:who"],
+                topicId: "setup:0",
+                targetDimension: "who"
+              }
+            ]
+          })
+        }),
+        { status: 200 }
+      )
+    );
+    const result = await getCoachAdapter("openai").generateCards(
+      {
+        sessionProfile: profile,
+        transcriptSegments: [finalSegment],
+        existingCards: [
+          existingCard(1, {
+            title: "権限の担当確認",
+            question: "権限を持つ担当者は誰ですか？",
+            ruleIds: ["topic:setup:0", "deep-dive:who"],
+            topicId: "setup:0",
+            targetDimension: "who"
+          })
+        ],
+        lastLlmCallAt: 0,
+        manualRecheck: true
+      },
+      {
+        apiKey: "server-key",
+        model: "gpt-5-mini",
+        fetcher: fetcher as unknown as typeof fetch
+      }
+    );
+
+    expect(result.candidates.map((item) => item.stableKey)).toEqual([
+      "same-topic-new-dimension"
+    ]);
+    expect(result.payloadPreview?.duplicatePrevention.askedDeepDiveDimensions).toEqual([
+      "topic:setup:0|deep-dive:who"
+    ]);
   });
 
   it("normalizes provider schema mismatch into a safe diagnostic", async () => {

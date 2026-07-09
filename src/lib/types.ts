@@ -74,6 +74,14 @@ export type CoachCardStatus =
 
 export type CoachCardPriority = "high" | "medium" | "low";
 
+export type CoachDeepDiveDimension =
+  | "who"
+  | "why"
+  | "when"
+  | "conditions"
+  | "examples"
+  | "exceptions";
+
 export type CoachCard = {
   id: string;
   title: string;
@@ -84,6 +92,8 @@ export type CoachCard = {
   status: CoachCardStatus;
   sourceSegmentIds: string[];
   ruleIds: string[];
+  topicId?: string;
+  targetDimension?: CoachDeepDiveDimension;
   createdAt: string;
 };
 

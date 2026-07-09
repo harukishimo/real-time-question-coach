@@ -311,6 +311,24 @@ describe("coach flow", () => {
     expect(countCardsByStatus(cards).queued).toBe(2);
   });
 
+  it("keeps topic and target dimension metadata on generated cards", () => {
+    const cards = applyCoachCardCandidates(
+      [],
+      [
+        {
+          ...candidate(1),
+          topicId: "conversation:1",
+          targetDimension: "why"
+        }
+      ]
+    );
+
+    expect(cards[0]).toMatchObject({
+      topicId: "conversation:1",
+      targetDimension: "why"
+    });
+  });
+
   it("promotes queued cards after a user action", () => {
     const cards = applyCoachCardCandidates(
       [],

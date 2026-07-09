@@ -1,5 +1,12 @@
 import { buildLocalCoachContext, evaluateLocalRuleGate } from "@/lib/rule-gate";
-import { getRecentConversationBuffer } from "@/lib/transcript";
+import {
+  COACH_TRANSCRIPT_MAX_FINALS,
+  COACH_TRANSCRIPT_MIN_FINALS,
+  COACH_TRANSCRIPT_WINDOW_MS,
+  buildCoachTopicStates,
+  getCoachTranscriptWindow,
+  type CoachTopicState
+} from "@/lib/coach-topic-state";
 import {
   createMissingEnvDiagnostic,
   normalizeProviderError,
@@ -47,6 +54,12 @@ export type CoachLlmPayload = {
   schemaVersion: "rqc.coach.v1";
   task: "generate_question_cards";
   reviewMode: "local_signal" | "transcript_window" | "manual_recheck";
+  transcriptWindow: {
+    targetDurationMs: number;
+    minFinalSegments: number;
+    maxFinalSegments: number;
+    includedFinalSegments: number;
+  };
   session: {
     conversationType: string;
     industry: string;
@@ -65,6 +78,7 @@ export type CoachLlmPayload = {
     text: string;
   } | null;
   unconfirmedIssues: string[];
+  topicStates: CoachTopicState[];
   triggerReasons: string[];
   localCandidateSeeds: Array<{
     title: string;
@@ -77,6 +91,7 @@ export type CoachLlmPayload = {
   duplicatePrevention: {
     coveredTopics: string[];
     activeQuestions: string[];
+    askedDeepDiveDimensions: string[];
   };
   maxCandidates: 3;
 };
@@ -92,7 +107,17 @@ const COACH_JSON_SCHEMA = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["stableKey", "title", "question", "reason", "priority", "score", "ruleIds"],
+        required: [
+          "stableKey",
+          "title",
+          "question",
+          "reason",
+          "priority",
+          "score",
+          "ruleIds",
+          "topicId",
+          "targetDimension"
+        ],
         properties: {
           stableKey: { type: "string" },
           title: { type: "string" },
@@ -100,7 +125,12 @@ const COACH_JSON_SCHEMA = {
           reason: { type: "string" },
           priority: { type: "string", enum: ["high", "medium", "low"] },
           score: { type: "number" },
-          ruleIds: { type: "array", items: { type: "string" } }
+          ruleIds: { type: "array", items: { type: "string" } },
+          topicId: { type: "string" },
+          targetDimension: {
+            type: "string",
+            enum: ["who", "why", "when", "conditions", "examples", "exceptions"]
+          }
         }
       }
     }
@@ -109,11 +139,18 @@ const COACH_JSON_SCHEMA = {
 
 const COACH_SYSTEM_PROMPT = [
   "Return only schema-valid Japanese question card candidates. Do not include meeting minutes.",
-  "Ground every candidate in recentTranscript or latestFinalTranscript and the session purpose.",
-  "Look for unresolved claims, vague language, missing reasons, actors, owners, dates, decision criteria, constraints, or next actions that are worth asking about now.",
-  "Treat localCandidateSeeds and unconfirmedIssues as hints, not mandatory questions.",
-  "Do not repeat duplicatePrevention.activeQuestions or duplicatePrevention.coveredTopics.",
+  "Generate useful deep-dive questions even when the transcript contains no predefined important or ambiguous keyword.",
+  "Ground every candidate in recentTranscript, topicStates.evidence, or latestFinalTranscript and the session purpose.",
+  "topicStates are provisional heuristic state: verify them against the transcript before deciding what is missing.",
+  "Prioritize partial conversation topics and ask about one missing dimension: who, why, when, conditions, examples, or exceptions.",
+  "Use already-covered dimensions and evidence so the next question advances the discussion instead of restarting it.",
+  "Treat localCandidateSeeds and unconfirmedIssues as hints, not mandatory questions. Do not ask a not_started checklist topic unless the transcript supports it or it is critical to the session purpose.",
+  "Do not repeat duplicatePrevention.activeQuestions or duplicatePrevention.askedDeepDiveDimensions.",
+  "duplicatePrevention.coveredTopics are topics already raised: you may ask a different missing dimension on the same topic, but do not restart it from the beginning.",
   "For transcript_window or manual_recheck reviewMode, inspect the whole recent window even when localCandidateSeeds is empty.",
+  "Avoid a generic purpose-connection question when a concrete statement can be deepened.",
+  "For each candidate, set topicId to a topicStates id, set targetDimension to one missing dimension, and include matching topic:<topic id> and deep-dive:<dimension> values in ruleIds.",
+  "When one or more meaningful missing dimensions exist, return one to three candidates ordered by urgency.",
   "If the transcript does not support a useful follow-up, return an empty candidates array instead of inventing a checklist question.",
   "If the latest transcript is weakly related to the session purpose, return at most one bridge question."
 ].join(" ");
@@ -175,6 +212,28 @@ function candidateTouchesCoveredTopic(
   return coveredTopics.some((topic) => topic.length > 0 && candidateText.includes(topic));
 }
 
+function deepDiveSignature(input: {
+  ruleIds: string[];
+  topicId?: string;
+  targetDimension?: string;
+}): string | null {
+  const topic = input.topicId ? `topic:${input.topicId}` : input.ruleIds.find((ruleId) => ruleId.startsWith("topic:"));
+  const dimension = input.targetDimension
+    ? `deep-dive:${input.targetDimension}`
+    : input.ruleIds.find((ruleId) => ruleId.startsWith("deep-dive:"));
+  return topic && dimension ? `${topic}|${dimension}` : null;
+}
+
+function collectAskedDeepDiveDimensions(cards: CoachCard[]): string[] {
+  return [
+    ...new Set(
+      cards
+        .map((card) => deepDiveSignature(card))
+        .filter((signature): signature is string => Boolean(signature))
+    )
+  ].slice(0, 16);
+}
+
 function removeDuplicateTopicCandidates(
   candidates: CoachCardCandidate[],
   sessionProfile: SessionProfile,
@@ -182,23 +241,33 @@ function removeDuplicateTopicCandidates(
 ): CoachCardCandidate[] {
   const coveredTopics = collectCoveredTopics(sessionProfile, existingCards);
   const activeQuestions = new Set(displayCardQuestions(existingCards));
+  const askedDeepDiveDimensions = new Set(collectAskedDeepDiveDimensions(existingCards));
 
-  return candidates.filter(
-    (candidate) =>
-      !activeQuestions.has(candidate.question) &&
-      !candidateTouchesCoveredTopic(candidate, coveredTopics)
-  );
+  return candidates.filter((candidate) => {
+    if (activeQuestions.has(candidate.question)) return false;
+
+    const signature = deepDiveSignature(candidate);
+    if (signature) {
+      return !askedDeepDiveDimensions.has(signature);
+    }
+
+    return !candidateTouchesCoveredTopic(candidate, coveredTopics);
+  });
 }
 
 export function buildCoachLlmPayload(
   input: CoachAdapterInput,
   dispatchReasons: string[] = []
 ): CoachLlmPayload {
-  const recentTranscript = getRecentConversationBuffer(input.transcriptSegments, 6);
+  const recentTranscript = getCoachTranscriptWindow(input.transcriptSegments);
   const context = buildLocalCoachContext({
     sessionProfile: input.sessionProfile,
     finalSegments: input.transcriptSegments.filter((segment) => segment.isFinal),
     existingCards: input.existingCards
+  });
+  const topicStates = buildCoachTopicStates({
+    sessionProfile: input.sessionProfile,
+    transcriptWindow: recentTranscript
   });
   const activeQuestions = displayCardQuestions(input.existingCards);
   const triggerReasons = [
@@ -215,6 +284,12 @@ export function buildCoachLlmPayload(
     schemaVersion: "rqc.coach.v1",
     task: "generate_question_cards",
     reviewMode,
+    transcriptWindow: {
+      targetDurationMs: COACH_TRANSCRIPT_WINDOW_MS,
+      minFinalSegments: COACH_TRANSCRIPT_MIN_FINALS,
+      maxFinalSegments: COACH_TRANSCRIPT_MAX_FINALS,
+      includedFinalSegments: recentTranscript.length
+    },
     session: {
       conversationType: input.sessionProfile.conversationType,
       industry: input.sessionProfile.industry,
@@ -235,6 +310,14 @@ export function buildCoachLlmPayload(
         }
       : null,
     unconfirmedIssues: context.unconfirmedIssues.slice(0, 8).map(redactInlineSecrets),
+    topicStates: topicStates.map((topic) => ({
+      ...topic,
+      label: redactInlineSecrets(topic.label),
+      evidence: topic.evidence.map((evidence) => ({
+        speaker: redactInlineSecrets(evidence.speaker),
+        text: redactInlineSecrets(evidence.text).slice(0, 180)
+      }))
+    })),
     triggerReasons: [...new Set(triggerReasons)].slice(0, 6),
     localCandidateSeeds: context.candidateSeeds.slice(0, 3).map((candidate) => ({
       title: redactInlineSecrets(candidate.title),
@@ -246,7 +329,8 @@ export function buildCoachLlmPayload(
     })),
     duplicatePrevention: {
       coveredTopics: collectCoveredTopics(input.sessionProfile, input.existingCards),
-      activeQuestions
+      activeQuestions,
+      askedDeepDiveDimensions: collectAskedDeepDiveDimensions(input.existingCards)
     },
     maxCandidates: 3
   };
@@ -272,6 +356,15 @@ function candidateFromUnknown(value: unknown, sourceSegmentIds: string[]): Coach
   if (!value || typeof value !== "object") return null;
   const source = value as Record<string, unknown>;
   const priority = source.priority === "high" || source.priority === "low" ? source.priority : "medium";
+  const targetDimension =
+    source.targetDimension === "who" ||
+    source.targetDimension === "why" ||
+    source.targetDimension === "when" ||
+    source.targetDimension === "conditions" ||
+    source.targetDimension === "examples" ||
+    source.targetDimension === "exceptions"
+      ? source.targetDimension
+      : null;
 
   if (
     typeof source.stableKey !== "string" ||
@@ -279,7 +372,9 @@ function candidateFromUnknown(value: unknown, sourceSegmentIds: string[]): Coach
     typeof source.question !== "string" ||
     typeof source.reason !== "string" ||
     typeof source.score !== "number" ||
-    !Array.isArray(source.ruleIds)
+    !Array.isArray(source.ruleIds) ||
+    typeof source.topicId !== "string" ||
+    !targetDimension
   ) {
     return null;
   }
@@ -292,7 +387,15 @@ function candidateFromUnknown(value: unknown, sourceSegmentIds: string[]): Coach
     priority,
     score: source.score,
     sourceSegmentIds,
-    ruleIds: source.ruleIds.filter((item): item is string => typeof item === "string")
+    ruleIds: [
+      ...new Set([
+        ...source.ruleIds.filter((item): item is string => typeof item === "string"),
+        `topic:${source.topicId}`,
+        `deep-dive:${targetDimension}`
+      ])
+    ],
+    topicId: source.topicId,
+    targetDimension
   };
 }
 
@@ -579,9 +682,9 @@ function realCoachAdapter(provider: Exclude<LlmProvider, "mock">): CoachAdapter 
       }
 
       try {
-        const sourceSegmentIds = getRecentConversationBuffer(input.transcriptSegments, 6).map(
-          (segment) => segment.id
-        );
+        const sourceSegmentIds = getCoachTranscriptWindow(input.transcriptSegments)
+          .slice(-3)
+          .map((segment) => segment.id);
         const raw =
           provider === "openai"
             ? await callOpenAiCoach(input, options, gate.reasons)

@@ -77,6 +77,8 @@ export function applyCoachCardCandidates(
       score: candidate.score,
       sourceSegmentIds: candidate.sourceSegmentIds,
       ruleIds: candidate.ruleIds,
+      topicId: candidate.topicId,
+      targetDimension: candidate.targetDimension,
       status: "queued",
       createdAt: new Date().toISOString()
     };
