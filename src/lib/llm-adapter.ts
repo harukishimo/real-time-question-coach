@@ -1,5 +1,4 @@
 import { buildLocalCoachContext, evaluateLocalRuleGate } from "@/lib/rule-gate";
-import { getActiveCardLimit } from "@/lib/coach-card";
 import {
   COACH_TRANSCRIPT_MAX_FINALS,
   COACH_TRANSCRIPT_MIN_FINALS,
@@ -159,6 +158,7 @@ const COACH_SYSTEM_PROMPT = [
 
 export const DEFAULT_COACH_LLM_TIMEOUT_MS = 15_000;
 export const OPENAI_COACH_MAX_OUTPUT_TOKENS = 1_200;
+const MAX_DUPLICATE_PREVENTION_QUESTIONS = 16;
 
 export function getOpenAiCoachReasoning(
   model: string | undefined
@@ -202,7 +202,7 @@ function displayCardQuestions(cards: CoachCard[]): string[] {
   return cards
     .filter((card) => card.status === "active" || card.status === "pinned")
     .sort((a, b) => b.score - a.score)
-    .slice(0, getActiveCardLimit())
+    .slice(0, MAX_DUPLICATE_PREVENTION_QUESTIONS)
     .map((card) => redactInlineSecrets(card.question));
 }
 

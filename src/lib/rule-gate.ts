@@ -6,8 +6,8 @@ import type {
   TranscriptSegment
 } from "@/lib/types";
 
-export const DEFAULT_COOLDOWN_MS = 8_000;
-export const DEFAULT_CONTEXT_REVIEW_INTERVAL_MS = 20_000;
+export const DEFAULT_COOLDOWN_MS = 16_000;
+export const DEFAULT_CONTEXT_REVIEW_INTERVAL_MS = 40_000;
 
 export type LocalCoachContext = {
   latestFinal: TranscriptSegment | null;

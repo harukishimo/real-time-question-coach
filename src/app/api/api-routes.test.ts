@@ -241,7 +241,7 @@ describe("api routes", () => {
     expect(body.cards.length).toBeGreaterThan(0);
   });
 
-  it("normalizes client-supplied existing active cards before returning coach cards", async () => {
+  it("keeps all client-supplied active cards without a fixed display limit", async () => {
     const sessionProfile = createSessionProfile(setupInput);
     const response = await postCoach(
       apiRequest(
@@ -265,11 +265,11 @@ describe("api routes", () => {
     const body = (await response.json()) as { cards: CoachCard[] };
 
     expect(response.status).toBe(200);
-    expect(countCardsByStatus(body.cards).active).toBeLessThanOrEqual(6);
-    expect(countCardsByStatus(body.cards).queued).toBeGreaterThanOrEqual(1);
+    expect(countCardsByStatus(body.cards).active).toBe(7);
+    expect(countCardsByStatus(body.cards).queued).toBe(0);
   });
 
-  it("normalizes client-supplied existing active cards with duplicated ids", async () => {
+  it("keeps client-supplied active cards with duplicated ids", async () => {
     const sessionProfile = createSessionProfile(setupInput);
     const response = await postCoach(
       apiRequest(
@@ -293,11 +293,11 @@ describe("api routes", () => {
     const body = (await response.json()) as { cards: CoachCard[] };
 
     expect(response.status).toBe(200);
-    expect(countCardsByStatus(body.cards).active).toBe(6);
-    expect(countCardsByStatus(body.cards).queued).toBeGreaterThanOrEqual(1);
+    expect(countCardsByStatus(body.cards).active).toBe(7);
+    expect(countCardsByStatus(body.cards).queued).toBe(0);
   });
 
-  it("does not demote a pinned existing card when a duplicate-id active card is replaced", async () => {
+  it("does not demote existing cards when new candidates are added", async () => {
     const sessionProfile = createSessionProfile(setupInput);
     const response = await postCoach(
       apiRequest(
@@ -331,12 +331,12 @@ describe("api routes", () => {
     const body = (await response.json()) as { cards: CoachCard[] };
 
     expect(response.status).toBe(200);
-    expect(countCardsByStatus(body.cards).active).toBe(6);
+    expect(countCardsByStatus(body.cards).active).toBeGreaterThan(6);
     expect(body.cards.find((card) => card.id === "dup" && card.score === 100)?.status).toBe(
       "pinned"
     );
     expect(body.cards.find((card) => card.id === "dup" && card.score === 10)?.status).toBe(
-      "queued"
+      "active"
     );
   });
 

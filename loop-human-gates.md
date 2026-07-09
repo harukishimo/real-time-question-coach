@@ -145,7 +145,7 @@ post_implementation_human_gate:
 
 - LLM provider、model、prompt、adapter境界、mock fallback。
 - LLMへ送信するpayload、redaction、payload minimization、schema、受信schema、fallback。
-- AIカードの役割、表示中最大6件制御、1回のLLM候補最大3件、priority、dedupe、pinned、dismiss、manual recheck。
+- AIカードの役割、固定表示上限なしのスクロール制御、1回のLLM候補最大3件、priority、dedupe、pinned、dismiss、manual recheck。
 - LLM発火条件、重要語、曖昧表現、沈黙、質問候補生成、常時呼び出し禁止。
 - Session Report生成、report failure時のexport可否。
 
@@ -198,7 +198,7 @@ LLMは会話支援のために必要なタイミングだけ呼ぶ。常時呼�
 
 - Login -> Session Setup -> Realtime transcript + AI coach cards -> Session Report -> discard / local save / export の主要導線。
 - 画面遷移条件、戻る操作、disabled state、error state、loading state。
-- AIカード過多を防ぐUI、6枚表示上限、カード一覧のスクロール、優先順位、次に重要なactionの差し替え。
+- AIカード過多を防ぐUI、固定枚数上限なしのカード一覧スクロール、優先順位、次に重要なactionの差し替え。
 - mobile viewport、keyboard operation、visible focus、text overflow。
 
 ### Infrastructure, Deployment, And Dependency

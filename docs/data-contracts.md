@@ -109,7 +109,7 @@ type CoachCard = {
 };
 ```
 
-active表示は最大6件であり、右ペイン内スクロールで全件へ到達可能にする。
+active / pinned 表示には固定件数上限を設けず、右ペイン内スクロールで全件へ到達可能にする。
 
 scoreの扱い:
 
@@ -117,8 +117,8 @@ scoreの扱い:
 - local rule seedの曖昧表現カード: `78`
 - local rule seedのmust-check gapカード: `74`
 - LLM候補カード: provider応答の `score` を `0..100` に丸め、`50` 未満は破棄する
-- active上限超過時は `score` 降順で表示候補を選び、低scoreの非pinnedカードをqueuedへ送る
-- `pinned` は自動降格しない
+- 新規候補は重複除去後にactiveへ追加し、表示件数を理由に既存カードをqueuedへ降格しない
+- `pinned` は固定表示を維持する
 
 ## Local Rule Gate
 
@@ -128,7 +128,7 @@ LLMは常時呼び出さない。local rule gateが必要性を判定した場�
 
 - final transcriptが存在する
 - cooldownが終了している
-- importantTerms、ambiguousTerms、または未回収のmustCheckItemsに該当する
+- importantTerms、ambiguousTerms、未回収のmustCheckItems、初回final、または40秒ごとの文脈レビューに該当する
 - 同じ論点が `done` / `dismissed` 済みでない
 
 現在の抑制条件:
@@ -142,10 +142,11 @@ LLMは常時呼び出さない。local rule gateが必要性を判定した場�
 現在のcooldown:
 
 ```ts
-const DEFAULT_COOLDOWN_MS = 15_000;
+const DEFAULT_COOLDOWN_MS = 16_000;
+const DEFAULT_CONTEXT_REVIEW_INTERVAL_MS = 40_000;
 ```
 
-manual recheckはユーザーの明示操作なのでcooldownを解除できる。ただしin-flight重複とactive最大6件制御は維持する。
+manual recheckはユーザーの明示操作なのでcooldownを解除できる。ただしin-flight重複とカード重複除去は維持する。
 
 ## sessionReport
 

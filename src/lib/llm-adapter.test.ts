@@ -218,21 +218,20 @@ describe("LLM coach adapter", () => {
     expect(payload.duplicatePrevention.askedDeepDiveDimensions).toEqual([]);
   });
 
-  it("sends all six displayed questions for duplicate prevention", () => {
+  it("bounds duplicate-prevention questions while display cards remain unlimited", () => {
     const payload = buildCoachLlmPayload({
       sessionProfile: profile,
       transcriptSegments: [finalSegment],
-      existingCards: Array.from({ length: 6 }, (_, index) => existingCard(index + 1))
+      existingCards: Array.from({ length: 20 }, (_, index) => existingCard(index + 1))
     });
 
-    expect(payload.duplicatePrevention.activeQuestions).toEqual([
-      "既存質問6は確認済みですか？",
-      "既存質問5は確認済みですか？",
-      "既存質問4は確認済みですか？",
-      "既存質問3は確認済みですか？",
-      "既存質問2は確認済みですか？",
-      "既存質問1は確認済みですか？"
-    ]);
+    expect(payload.duplicatePrevention.activeQuestions).toHaveLength(16);
+    expect(payload.duplicatePrevention.activeQuestions[0]).toBe(
+      "既存質問20は確認済みですか？"
+    );
+    expect(payload.duplicatePrevention.activeQuestions.at(-1)).toBe(
+      "既存質問5は確認済みですか？"
+    );
   });
 
   it("validates and caps provider candidates to three safe question cards", () => {

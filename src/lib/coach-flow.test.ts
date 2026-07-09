@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   applyCoachCardCandidates,
   countCardsByStatus,
-  getActiveCardLimit,
   updateCardStatus
 } from "@/lib/coach-card";
 import { createDummyTranscriptPair } from "@/lib/dummy-transcript";
 import {
+  DEFAULT_COOLDOWN_MS,
   DEFAULT_CONTEXT_REVIEW_INTERVAL_MS,
   buildLocalCoachContext,
   decideCoachDispatch,
@@ -133,7 +133,7 @@ describe("coach flow", () => {
     expect(result.candidateSeeds[0].question).not.toContain("MVPで必ず成立させる業務成果");
   });
 
-  it("reviews a growing transcript window every twenty seconds after the first bridge card", () => {
+  it("reviews a growing transcript window every forty seconds after the first bridge card", () => {
     const finalSegment = {
       id: "seg-window-review",
       sequence: 2,
@@ -151,6 +151,8 @@ describe("coach flow", () => {
       ruleIds: ["context-bridge"]
     };
     const lastLlmCallAt = 10_000;
+
+    expect(DEFAULT_CONTEXT_REVIEW_INTERVAL_MS).toBe(40_000);
 
     expect(
       evaluateLocalRuleGate({
@@ -340,15 +342,14 @@ describe("coach flow", () => {
     );
   });
 
-  it("keeps active coach cards capped at six", () => {
+  it("keeps all coach cards active without a fixed display limit", () => {
     const cards = applyCoachCardCandidates(
       [],
       Array.from({ length: 8 }, (_, index) => candidate(index + 1))
     );
 
-    expect(getActiveCardLimit()).toBe(6);
-    expect(countCardsByStatus(cards).active).toBe(6);
-    expect(countCardsByStatus(cards).queued).toBe(2);
+    expect(countCardsByStatus(cards).active).toBe(8);
+    expect(countCardsByStatus(cards).queued).toBe(0);
   });
 
   it("keeps topic and target dimension metadata on generated cards", () => {
@@ -370,18 +371,15 @@ describe("coach flow", () => {
   });
 
   it("promotes queued cards after a user action", () => {
-    const cards = applyCoachCardCandidates(
-      [],
-      Array.from({ length: 7 }, (_, index) => candidate(index + 1))
-    );
+    const cards = [existingCard(1, 90, "active"), existingCard(2, 80, "queued")];
     const updated = updateCardStatus(cards, cards[0].id, "done");
 
-    expect(countCardsByStatus(updated).active).toBe(6);
+    expect(countCardsByStatus(updated).active).toBe(1);
     expect(countCardsByStatus(updated).queued).toBe(0);
     expect(countCardsByStatus(updated).done).toBe(1);
   });
 
-  it("replaces the lowest non-pinned active card when a higher score candidate arrives", () => {
+  it("keeps lower-score cards visible when a higher score candidate arrives", () => {
     const cards = applyCoachCardCandidates(
       [],
       [
@@ -398,8 +396,9 @@ describe("coach flow", () => {
     const activeCards = updated.filter((card) => card.status === "active");
     const queuedCards = updated.filter((card) => card.status === "queued");
 
-    expect(countCardsByStatus(updated).active).toBe(6);
+    expect(countCardsByStatus(updated).active).toBe(7);
     expect(activeCards.map((card) => card.score).sort((a, b) => a - b)).toEqual([
+      61,
       70,
       80,
       81,
@@ -407,10 +406,10 @@ describe("coach flow", () => {
       83,
       99
     ]);
-    expect(queuedCards.map((card) => card.score)).toContain(61);
+    expect(queuedCards).toHaveLength(0);
   });
 
-  it("does not demote pinned cards when all active slots are pinned", () => {
+  it("keeps pinned cards and adds new cards without demotion", () => {
     const cards = applyCoachCardCandidates(
       [],
       Array.from({ length: 6 }, (_, index) => scoredCandidate(index + 1, 60 + index))
@@ -421,12 +420,12 @@ describe("coach flow", () => {
     }));
     const updated = applyCoachCardCandidates(pinned, [scoredCandidate(9, 99)]);
 
-    expect(countCardsByStatus(updated).active).toBe(6);
-    expect(countCardsByStatus(updated).queued).toBe(1);
+    expect(countCardsByStatus(updated).active).toBe(7);
+    expect(countCardsByStatus(updated).queued).toBe(0);
     expect(updated.filter((card) => card.status === "pinned")).toHaveLength(6);
   });
 
-  it("normalizes pre-existing active cards before returning coach results", () => {
+  it("keeps every pre-existing active card visible", () => {
     const updated = applyCoachCardCandidates(
       [
         existingCard(1, 91),
@@ -440,17 +439,17 @@ describe("coach flow", () => {
       []
     );
 
-    expect(countCardsByStatus(updated).active).toBe(6);
-    expect(countCardsByStatus(updated).queued).toBe(1);
+    expect(countCardsByStatus(updated).active).toBe(7);
+    expect(countCardsByStatus(updated).queued).toBe(0);
     expect(
       updated
         .filter((card) => card.status === "active")
         .map((card) => card.score)
         .sort((a, b) => a - b)
-    ).toEqual([60, 64, 72, 83, 91, 95]);
+    ).toEqual([51, 60, 64, 72, 83, 91, 95]);
   });
 
-  it("normalizes pre-existing active cards even when client-supplied ids are duplicated", () => {
+  it("keeps pre-existing active cards even when client-supplied ids are duplicated", () => {
     const updated = applyCoachCardCandidates(
       [
         { ...existingCard(1, 91), id: "duplicate" },
@@ -464,11 +463,11 @@ describe("coach flow", () => {
       []
     );
 
-    expect(countCardsByStatus(updated).active).toBe(6);
-    expect(countCardsByStatus(updated).queued).toBe(1);
+    expect(countCardsByStatus(updated).active).toBe(7);
+    expect(countCardsByStatus(updated).queued).toBe(0);
   });
 
-  it("promotes queued cards by slot count even when queued ids are duplicated", () => {
+  it("promotes every queued card even when queued ids are duplicated", () => {
     const updated = applyCoachCardCandidates(
       [
         existingCard(1, 91),
@@ -483,11 +482,11 @@ describe("coach flow", () => {
       []
     );
 
-    expect(countCardsByStatus(updated).active).toBe(6);
-    expect(countCardsByStatus(updated).queued).toBe(2);
+    expect(countCardsByStatus(updated).active).toBe(8);
+    expect(countCardsByStatus(updated).queued).toBe(0);
   });
 
-  it("does not demote a pinned card that shares an id with the lowest active card", () => {
+  it("does not demote cards that share an id when another card arrives", () => {
     const updated = applyCoachCardCandidates(
       [
         { ...existingCard(1, 100, "pinned"), id: "duplicate" },
@@ -500,17 +499,19 @@ describe("coach flow", () => {
       [scoredCandidate(9, 92)]
     );
 
-    expect(countCardsByStatus(updated).active).toBe(6);
+    expect(countCardsByStatus(updated).active).toBe(7);
     expect(updated.find((card) => card.id === "duplicate" && card.score === 100)?.status).toBe(
       "pinned"
     );
     expect(updated.find((card) => card.id === "duplicate" && card.score === 10)?.status).toBe(
-      "queued"
+      "active"
     );
   });
 
   it("keeps LLM dispatch final-only, idempotent, cooldown-aware, and manual-recheck explicit", () => {
     const pair = createDummyTranscriptPair("requirements", 0);
+
+    expect(DEFAULT_COOLDOWN_MS).toBe(16_000);
 
     expect(
       decideCoachDispatch({

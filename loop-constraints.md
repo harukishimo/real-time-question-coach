@@ -104,7 +104,7 @@ Observed path examples:
 - 実 STT / LLM provider を実行しない。実行が必要な場合は human-run とする。
 - OpenAI / Anthropic / Supabase / Google OAuth / Vercel の管理画面、課金、model setting、rate limit、quota、provider account を変更しない。
 - provider adapter境界をなくす変更、mock fallbackを削除する変更、provider固定を強める変更を行わない。
-- LLM常時呼び出しを導入しない。発火条件、rate limit、重要語/曖昧表現判定、表示中カードの最大6枚、1回のLLM候補最大3件、優先度制御を弱めない。
+- LLM常時呼び出しを導入しない。40秒の通常レビュー間隔、16秒の高重要度クールダウン、rate limit、重要語/曖昧表現判定、1回のLLM候補最大3件、重複抑制、優先度制御を弱めない。表示中カードには固定枚数上限を設けず、スクロールで全件へ到達可能にする。
 - 音声を自前サーバーへ中継・保存する実装を追加しない。
 
 Observed path examples:
@@ -177,7 +177,7 @@ Observed path examples:
 - DB schema、Supabase project、RLS、storage、Edge Function、server-side persistence に影響する。
 - OpenAI、Anthropic、STT provider、LLM model、provider credential、provider cost、quota、rate limit に影響する。
 - 音声、文字起こし、AIカード、LLM入出力、Session Report の保存・保持・ログ・export・暗号化に影響する。
-- AIカードの6枚表示上限、1回のLLM候補3件上限、優先度制御、重要語/曖昧表現判定、LLM発火条件に影響する。
+- AIカードの上限なしスクロール表示、1回のLLM候補3件上限、優先度制御、重要語/曖昧表現判定、LLM発火条件に影響する。
 - Session Setup の入力項目、会話タイプ、業界、目的、ナレッジ選択、speaker handling に影響する。
 - CI/CD、Vercel、production build setting、deploy、domain、DNS、OAuth consent screen に影響する。
 - dependency update、lockfile churn、security alert remediation を扱う。
@@ -208,7 +208,7 @@ Observed path examples:
 - L1 では test 実行を必須にしない。コード変更を行わないため。
 - L2 以上でコード変更を行う場合は、提案前に関連 test を実行する。
 - MVP実装ticketの標準確認は `npm run lint`、`npm run typecheck`、`npm test`、`npm run test:e2e`、`npm run build` とする。
-- browser permission、microphone stream、AIカード6枚表示上限とスクロール到達性、LLM dispatch gate、provider diagnostics、auth guard、report export / discard / local save はPlaywrightまたは同等のE2Eで確認する。
+- browser permission、microphone stream、7枚以上のAIカード表示とスクロール到達性、LLM dispatch gate、provider diagnostics、auth guard、report export / discard / local save はPlaywrightまたは同等のE2Eで確認する。
 - test を実行できない場合は、理由と残リスクを明示する。
 - verifier agent を使う場合は、scope、test、risk、deny list違反の有無を確認する。
 

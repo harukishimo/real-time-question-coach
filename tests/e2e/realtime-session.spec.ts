@@ -21,11 +21,11 @@ test("realtime session wires dummy transcript, coach cards, counts, and actions"
   }
 
   await expect(page.getByLabel("文字起こし")).toContainText("承認者");
-  await expect(page.getByLabel("AI補助カード")).toContainText(/active [1-6]/);
+  await expect(page.getByLabel("AI補助カード")).toContainText(/active \d+/);
 
   const activeText = await page.getByLabel("AI補助カード").locator(".pane-header span").innerText();
   const activeCount = Number(activeText.match(/active (\d+)/)?.[1] ?? "0");
-  expect(activeCount).toBeLessThanOrEqual(6);
+  expect(activeCount).toBeGreaterThan(0);
 
   const coachRequestsBeforeRecheck = coachRequestCount;
   await Promise.all([
@@ -40,14 +40,14 @@ test("realtime session wires dummy transcript, coach cards, counts, and actions"
   await expect(page.getByRole("status")).toContainText("Coach gate:");
 
   await page.getByRole("button", { name: "固定" }).first().click();
-  await expect(page.getByLabel("AI補助カード")).toContainText(/active [1-6]/);
+  await expect(page.getByLabel("AI補助カード")).toContainText(/active \d+/);
 
   await page.getByRole("button", { name: "聞いた" }).first().click();
   await expect(page.getByLabel("AI補助カード")).toContainText("done 1");
 });
 
-test("six active cards remain reachable inside the scrollable coach pane", async ({ page }) => {
-  const cards = Array.from({ length: 6 }, (_, index) => ({
+test("active cards beyond six remain reachable inside the scrollable coach pane", async ({ page }) => {
+  const cards = Array.from({ length: 9 }, (_, index) => ({
     id: `scroll-card-${index + 1}`,
     title: `深掘り確認${index + 1}`,
     question: `論点${index + 1}について、担当者・条件・具体例をもう少し確認しますか？`,
@@ -85,8 +85,8 @@ test("six active cards remain reachable inside the scrollable coach pane", async
 
   const coachPane = page.getByLabel("AI補助カード");
   const coachList = coachPane.locator(".coach-list");
-  await expect(coachPane).toContainText("active 6");
-  await expect(coachList.locator(".coach-card")).toHaveCount(6);
+  await expect(coachPane).toContainText("active 9");
+  await expect(coachList.locator(".coach-card")).toHaveCount(9);
 
   const scrollState = await coachList.evaluate((element) => {
     const style = getComputedStyle(element);
@@ -103,7 +103,7 @@ test("six active cards remain reachable inside the scrollable coach pane", async
     element.scrollTop = element.scrollHeight;
   });
   expect(await coachList.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
-  await expect(coachList.locator(".coach-card").last()).toContainText("深掘り確認6");
+  await expect(coachList.locator(".coach-card").last()).toContainText("深掘り確認9");
 });
 
 test("manual recheck double click does not create duplicate in-flight coach dispatches", async ({
@@ -147,7 +147,7 @@ test("local coach cards appear before delayed provider response", async ({ page 
   await startDefaultSession(page);
   await page.getByRole("button", { name: "ダミー文字起こし開始" }).click();
 
-  await expect(page.getByLabel("AI補助カード")).toContainText(/active [1-6]/, {
+  await expect(page.getByLabel("AI補助カード")).toContainText(/active \d+/, {
     timeout: 500
   });
   await expect(page.getByRole("status")).toContainText("Coach local", {
