@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   buildCoachLlmPayload,
+  DEFAULT_COACH_LLM_TIMEOUT_MS,
   getCoachAdapter,
   parseCoachProviderResponse,
   validateCoachCandidates
@@ -160,6 +161,7 @@ describe("LLM coach adapter", () => {
 
   it("calls OpenAI adapter with structured output request and parses success response", async () => {
     let capturedBody: BodyInit | null | undefined;
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
     const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       capturedBody = init?.body;
       return new Response(
@@ -187,9 +189,11 @@ describe("LLM coach adapter", () => {
     );
 
     expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(timeoutSpy).toHaveBeenCalledWith(DEFAULT_COACH_LLM_TIMEOUT_MS);
     expect(result.diagnostic).toBeUndefined();
     expect(result.candidates).toHaveLength(1);
     expect(String(capturedBody)).not.toContain("server-key");
+    timeoutSpy.mockRestore();
   });
 
   it("normalizes provider schema mismatch into a safe diagnostic", async () => {

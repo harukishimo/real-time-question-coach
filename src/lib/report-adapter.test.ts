@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   buildReportLlmPayload,
+  DEFAULT_REPORT_LLM_TIMEOUT_MS,
   generateSessionReportWithProvider,
   parseReportProviderResponse
 } from "@/lib/report-adapter";
@@ -146,6 +147,7 @@ describe("LLM report adapter", () => {
 
   it("calls OpenAI report adapter and does not put the server key in request body", async () => {
     let capturedBody: BodyInit | null | undefined;
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
     const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       capturedBody = init?.body;
       return new Response(
@@ -178,7 +180,9 @@ describe("LLM report adapter", () => {
       ok: true,
       provider: "openai"
     });
+    expect(timeoutSpy).toHaveBeenCalledWith(DEFAULT_REPORT_LLM_TIMEOUT_MS);
     expect(String(capturedBody)).not.toContain("server-key");
+    timeoutSpy.mockRestore();
   });
 
   it("falls back safely on report schema mismatch", async () => {

@@ -60,6 +60,8 @@ const REPORT_JSON_SCHEMA = {
   }
 } as const;
 
+export const DEFAULT_REPORT_LLM_TIMEOUT_MS = 45_000;
+
 function redactInlineSecrets(value: string): string {
   return value.replace(/(sk-[a-zA-Z0-9_-]{8,}|Bearer\s+[a-zA-Z0-9._-]+)/g, "[REDACTED]");
 }
@@ -147,7 +149,7 @@ async function callOpenAiReport(
       Authorization: `Bearer ${options.apiKey}`,
       "Content-Type": "application/json"
     },
-    signal: AbortSignal.timeout(options.timeoutMs ?? 12_000),
+    signal: AbortSignal.timeout(options.timeoutMs ?? DEFAULT_REPORT_LLM_TIMEOUT_MS),
     body: JSON.stringify({
       model: options.model,
       input: [
@@ -188,7 +190,7 @@ async function callAnthropicReport(
       "anthropic-version": "2023-06-01",
       "Content-Type": "application/json"
     },
-    signal: AbortSignal.timeout(options.timeoutMs ?? 12_000),
+    signal: AbortSignal.timeout(options.timeoutMs ?? DEFAULT_REPORT_LLM_TIMEOUT_MS),
     body: JSON.stringify({
       model: options.model,
       max_tokens: 1000,

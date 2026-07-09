@@ -89,6 +89,8 @@ const COACH_JSON_SCHEMA = {
   }
 } as const;
 
+export const DEFAULT_COACH_LLM_TIMEOUT_MS = 30_000;
+
 function stripTags(value: string): string {
   return value.replace(/<[^>]*>/g, "").trim();
 }
@@ -235,7 +237,7 @@ export const mockCoachAdapter: CoachAdapter = {
 };
 
 function providerTimeoutSignal(timeoutMs: number | undefined): AbortSignal {
-  return AbortSignal.timeout(timeoutMs ?? 12_000);
+  return AbortSignal.timeout(timeoutMs ?? DEFAULT_COACH_LLM_TIMEOUT_MS);
 }
 
 async function callOpenAiCoach(input: CoachAdapterInput, options: CoachAdapterOptions) {
