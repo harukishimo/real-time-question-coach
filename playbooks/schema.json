@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/realtime-question-coach/playbook.schema.json",
+  "title": "Realtime Question Coach Playbook",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "conversationType",
+    "industry",
+    "title",
+    "description",
+    "mustCheck",
+    "signals",
+    "ambiguousTerms",
+    "goodQuestions",
+    "avoid",
+    "completionCriteria",
+    "cardRules"
+  ],
+  "properties": {
+    "id": { "type": "string" },
+    "conversationType": {
+      "enum": ["sales", "requirements", "recruiting", "user_research"]
+    },
+    "industry": {
+      "enum": ["any", "manufacturing", "it", "healthcare", "finance", "generic"]
+    },
+    "title": { "type": "string" },
+    "description": { "type": "string" },
+    "mustCheck": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "items": { "type": "string" }
+    },
+    "signals": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 12,
+      "items": { "type": "string" }
+    },
+    "ambiguousTerms": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "items": { "type": "string" }
+    },
+    "goodQuestions": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 10,
+      "items": { "type": "string" }
+    },
+    "avoid": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 6,
+      "items": { "type": "string" }
+    },
+    "completionCriteria": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "items": { "type": "string" }
+    },
+    "cardRules": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 6,
+      "items": { "type": "string" }
+    }
+  }
+}

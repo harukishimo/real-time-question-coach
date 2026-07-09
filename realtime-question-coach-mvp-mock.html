@@ -1,0 +1,1433 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Realtime Question Coach MVP Mock</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f6f2;
+      --surface: #ffffff;
+      --surface-2: #f0f4f3;
+      --ink: #202521;
+      --muted: #64706a;
+      --line: #d9dfd8;
+      --teal: #047a73;
+      --teal-2: #dff4f1;
+      --amber: #b56e00;
+      --amber-2: #fff1d6;
+      --red: #b94135;
+      --red-2: #ffe3df;
+      --blue: #315f91;
+      --blue-2: #e4eef8;
+      --green: #2f7d45;
+      --shadow: 0 18px 44px rgba(28, 35, 31, 0.12);
+      --radius: 8px;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background: var(--bg);
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    .app {
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+
+    .topbar {
+      min-height: 64px;
+      display: grid;
+      grid-template-columns: minmax(240px, 1fr) auto minmax(280px, 1fr);
+      align-items: center;
+      gap: 18px;
+      padding: 12px 18px;
+      background: rgba(255, 255, 255, 0.92);
+      border-bottom: 1px solid var(--line);
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      backdrop-filter: blur(12px);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .mark {
+      width: 38px;
+      height: 38px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      color: #fff;
+      background: linear-gradient(135deg, #0c746e, #303c45);
+      font-weight: 800;
+    }
+
+    .brand strong {
+      display: block;
+      font-size: 15px;
+    }
+
+    .brand span,
+    .meta-row {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .session-clock {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      white-space: nowrap;
+    }
+
+    .timer {
+      min-width: 72px;
+      padding: 8px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface-2);
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+      font-weight: 760;
+    }
+
+    .top-actions {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .chip,
+    .status-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      height: 30px;
+      padding: 0 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fff;
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--green);
+      box-shadow: 0 0 0 4px rgba(47, 125, 69, 0.12);
+    }
+
+    .btn {
+      height: 36px;
+      padding: 0 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--ink);
+      font-weight: 680;
+      transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+    }
+
+    .btn:hover {
+      transform: translateY(-1px);
+      border-color: #aebbb3;
+    }
+
+    .btn.primary {
+      background: var(--teal);
+      border-color: var(--teal);
+      color: #fff;
+    }
+
+    .btn.danger {
+      border-color: #e1b7b2;
+      color: var(--red);
+    }
+
+    .layout {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 320px minmax(420px, 1fr) minmax(360px, 440px);
+      gap: 14px;
+      padding: 14px;
+    }
+
+    body.setup-mode .session-clock,
+    body.setup-mode .top-actions {
+      display: none;
+    }
+
+    body.setup-mode .topbar {
+      grid-template-columns: 1fr;
+    }
+
+    body.setup-mode .layout {
+      min-height: calc(100vh - 64px);
+      grid-template-columns: minmax(320px, 720px);
+      align-content: start;
+      justify-content: center;
+      padding-top: 28px;
+    }
+
+    body.setup-mode .main-pane,
+    body.setup-mode .coach-pane {
+      display: none;
+    }
+
+    body.coach-mode .setup-pane {
+      display: none;
+    }
+
+    body.coach-mode .layout {
+      grid-template-columns: minmax(420px, 1fr) minmax(360px, 440px);
+    }
+
+    .pane {
+      min-height: 0;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .pane-header {
+      padding: 14px 14px 12px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .pane-title h1,
+    .pane-title h2,
+    .pane-title h3 {
+      margin: 0;
+      font-size: 15px;
+      line-height: 1.2;
+    }
+
+    .pane-title p {
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .section {
+      padding: 14px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .section:last-child {
+      border-bottom: 0;
+    }
+
+    .setup-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 14px;
+      background: #fbfcfa;
+      border-top: 1px solid var(--line);
+    }
+
+    .setup-actions .btn {
+      min-width: 148px;
+    }
+
+    .section-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .section-title h3 {
+      margin: 0;
+      font-size: 13px;
+    }
+
+    .form-grid {
+      display: grid;
+      gap: 10px;
+    }
+
+    .field {
+      display: grid;
+      gap: 5px;
+    }
+
+    .field label {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .field input,
+    .field select,
+    .field textarea {
+      width: 100%;
+      min-height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--ink);
+      padding: 8px 10px;
+    }
+
+    .field textarea {
+      min-height: 78px;
+      resize: vertical;
+    }
+
+    .segmented {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 6px;
+    }
+
+    .segmented button,
+    .source-grid button {
+      min-height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .segmented button.active,
+    .source-grid button.active {
+      border-color: var(--teal);
+      background: var(--teal-2);
+      color: var(--teal);
+    }
+
+    .source-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 7px;
+    }
+
+    .security-list,
+    .metric-grid {
+      display: grid;
+      gap: 8px;
+    }
+
+    .security-item,
+    .metric {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      min-height: 34px;
+      padding: 7px 9px;
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      font-size: 12px;
+    }
+
+    .security-item strong,
+    .metric strong {
+      font-size: 12px;
+    }
+
+    .ok {
+      color: var(--green);
+      font-weight: 800;
+    }
+
+    .warn {
+      color: var(--amber);
+      font-weight: 800;
+    }
+
+    .main-pane {
+      min-height: 0;
+    }
+
+    .transcript-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfcfa;
+    }
+
+    .topic-row {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      min-width: 0;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+
+    .topic {
+      flex: 0 0 auto;
+      padding: 5px 8px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      background: #fff;
+      font-size: 12px;
+    }
+
+    .transcript {
+      flex: 1;
+      min-height: 360px;
+      overflow: auto;
+      padding: 16px;
+      display: grid;
+      align-content: start;
+      gap: 12px;
+    }
+
+    .line {
+      display: grid;
+      grid-template-columns: 52px minmax(0, 1fr);
+      gap: 10px;
+      align-items: start;
+    }
+
+    .time {
+      color: var(--muted);
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+      padding-top: 3px;
+    }
+
+    .bubble {
+      max-width: 780px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .bubble.self {
+      background: #f5f9ff;
+      border-color: #cbdcf0;
+    }
+
+    .speaker {
+      margin-bottom: 5px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .utterance {
+      margin: 0;
+      line-height: 1.7;
+      font-size: 14px;
+    }
+
+    .bottom-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 14px;
+      border-top: 1px solid var(--line);
+      background: #fbfcfa;
+    }
+
+    .level {
+      display: flex;
+      align-items: end;
+      gap: 3px;
+      height: 26px;
+    }
+
+    .level span {
+      width: 5px;
+      border-radius: 999px 999px 2px 2px;
+      background: var(--teal);
+      opacity: 0.55;
+      animation: level 980ms ease-in-out infinite alternate;
+    }
+
+    .level span:nth-child(2n) {
+      animation-delay: 220ms;
+      background: var(--amber);
+    }
+
+    .level span:nth-child(3n) {
+      animation-delay: 420ms;
+      background: var(--blue);
+    }
+
+    @keyframes level {
+      from { height: 7px; }
+      to { height: 24px; }
+    }
+
+    .coach-body {
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      flex: 1;
+    }
+
+    .coach-stats {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfcfa;
+    }
+
+    .stat {
+      min-height: 54px;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .stat span {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .stat strong {
+      display: block;
+      margin-top: 4px;
+      font-size: 20px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .card-list {
+      min-height: 0;
+      overflow: auto;
+      padding: 14px;
+      display: grid;
+      align-content: start;
+      gap: 12px;
+    }
+
+    .coach-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      overflow: hidden;
+    }
+
+    .coach-card.now {
+      border-color: #e0b469;
+      box-shadow: inset 4px 0 0 var(--amber);
+    }
+
+    .coach-card.pinned {
+      border-color: #75b2ac;
+      box-shadow: inset 4px 0 0 var(--teal);
+    }
+
+    .card-head,
+    .card-foot {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 12px;
+      background: #fbfcfa;
+    }
+
+    .card-head {
+      border-bottom: 1px solid var(--line);
+    }
+
+    .card-foot {
+      border-top: 1px solid var(--line);
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 0 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .tag.now {
+      background: var(--amber-2);
+      color: var(--amber);
+    }
+
+    .tag.deep {
+      background: var(--blue-2);
+      color: var(--blue);
+    }
+
+    .tag.risk {
+      background: var(--red-2);
+      color: var(--red);
+    }
+
+    .tag.later {
+      background: var(--surface-2);
+      color: var(--muted);
+    }
+
+    .score {
+      color: var(--muted);
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+      font-weight: 800;
+    }
+
+    .card-main {
+      padding: 12px;
+    }
+
+    .card-main h3 {
+      margin: 0;
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    .card-main p {
+      margin: 7px 0 0;
+      color: var(--muted);
+      line-height: 1.55;
+      font-size: 13px;
+    }
+
+    .ask {
+      margin-top: 9px;
+      padding: 9px 10px;
+      border-radius: 8px;
+      background: var(--surface-2);
+      line-height: 1.55;
+      font-size: 13px;
+      font-weight: 680;
+    }
+
+    .card-actions {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .mini {
+      min-height: 30px;
+      padding: 0 8px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #fff;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 760;
+    }
+
+    .mini.active {
+      border-color: var(--teal);
+      background: var(--teal-2);
+      color: var(--teal);
+    }
+
+    .queue {
+      padding: 12px 14px;
+      border-top: 1px solid var(--line);
+      background: #fbfcfa;
+    }
+
+    .queue-list {
+      display: grid;
+      gap: 7px;
+      margin-top: 8px;
+    }
+
+    .queue-item {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+      padding: 8px 9px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      font-size: 12px;
+    }
+
+    .queue-item span {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 22px;
+      transform: translate(-50%, 18px);
+      opacity: 0;
+      pointer-events: none;
+      padding: 10px 14px;
+      border-radius: 8px;
+      background: #202521;
+      color: #fff;
+      font-size: 13px;
+      transition: opacity 0.18s ease, transform 0.18s ease;
+      z-index: 50;
+    }
+
+    .toast.show {
+      transform: translate(-50%, 0);
+      opacity: 1;
+    }
+
+    .report {
+      position: fixed;
+      inset: auto 18px 18px auto;
+      width: min(420px, calc(100vw - 36px));
+      max-height: calc(100vh - 90px);
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: var(--shadow);
+      display: none;
+      z-index: 30;
+    }
+
+    .report.show {
+      display: block;
+    }
+
+    .report h3 {
+      margin: 0;
+      padding: 14px;
+      border-bottom: 1px solid var(--line);
+      font-size: 14px;
+    }
+
+    .report-section {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .report-section:last-child {
+      border-bottom: 0;
+    }
+
+    .report-section strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 12px;
+    }
+
+    .report-section ul {
+      margin: 0;
+      padding-left: 18px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.7;
+    }
+
+    @media (max-width: 1180px) {
+      .layout {
+        grid-template-columns: 290px minmax(360px, 1fr);
+      }
+
+      body.coach-mode .layout {
+        grid-template-columns: minmax(360px, 1fr);
+      }
+
+      .coach-pane {
+        grid-column: 1 / -1;
+        min-height: 460px;
+      }
+    }
+
+    @media (max-width: 820px) {
+      .topbar {
+        grid-template-columns: 1fr;
+        align-items: stretch;
+      }
+
+      .session-clock,
+      .top-actions {
+        justify-content: flex-start;
+        flex-wrap: wrap;
+      }
+
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      .source-grid,
+      .coach-stats {
+        grid-template-columns: 1fr;
+      }
+
+      .line {
+        grid-template-columns: 44px minmax(0, 1fr);
+      }
+    }
+  </style>
+</head>
+<body class="setup-mode">
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="mark" aria-hidden="true">Q</div>
+        <div>
+          <strong>Question Coach</strong>
+          <span>Realtime meeting support</span>
+        </div>
+      </div>
+
+      <div class="session-clock">
+        <span class="status-chip"><span class="status-dot" aria-hidden="true"></span><span id="recordingState">録音中</span></span>
+        <div class="timer" id="timer">03:12</div>
+      </div>
+
+      <div class="top-actions">
+        <span class="chip" id="authChip">owner@example.com / owner</span>
+        <button class="btn" id="backToSetupButton" type="button">設定へ戻る</button>
+        <button class="btn" id="pauseButton" type="button">一時停止</button>
+        <button class="btn danger" id="endButton" type="button">終了</button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <aside class="pane setup-pane" aria-labelledby="setupTitle">
+        <div class="pane-header">
+          <div class="pane-title">
+            <h1 id="setupTitle">Session Setup</h1>
+            <p id="profileSummary">sales / manufacturing / discovery</p>
+          </div>
+        </div>
+
+        <section class="section">
+          <div class="section-title">
+            <h3>ログイン / 権限</h3>
+            <strong class="ok">RLS</strong>
+          </div>
+          <div class="security-list">
+            <div class="security-item"><span>Auth</span><strong>Supabase Auth</strong></div>
+            <div class="security-item"><span>DB用途</span><strong>認証メタデータのみ</strong></div>
+            <div class="security-item"><span>Role</span><strong id="roleText">owner</strong></div>
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="section-title">
+            <h3>会話タイプ</h3>
+          </div>
+          <div class="segmented" id="meetingTypes">
+            <button class="active" type="button" data-type="sales">商談</button>
+            <button type="button" data-type="requirements">要件定義</button>
+            <button type="button" data-type="interview">採用</button>
+            <button type="button" data-type="research">調査</button>
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="form-grid">
+            <div class="field">
+              <label for="industry">業界</label>
+              <select id="industry">
+                <option>製造業</option>
+                <option>SaaS</option>
+                <option>医療</option>
+                <option>不動産</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="role">相手役職</label>
+              <input id="role" value="現場責任者">
+            </div>
+            <div class="field">
+              <label for="goal">今回の目的</label>
+              <input id="goal" value="課題把握と導入条件の確認">
+            </div>
+            <div class="field">
+              <label for="mustCheck">必ず確認する論点</label>
+              <textarea id="mustCheck">予算 / 決裁者 / 現行運用 / 導入時期 / 権限</textarea>
+            </div>
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="section-title">
+            <h3>音声ソース</h3>
+            <strong id="permissionState" class="warn">未許可</strong>
+          </div>
+          <div class="source-grid" id="sources">
+            <button class="active" type="button" data-source="マイク">マイク</button>
+            <button type="button" data-source="Webタブ音声">Webタブ</button>
+            <button type="button" data-source="システム音声">システム</button>
+          </div>
+          <div style="margin-top:10px">
+            <button class="btn primary" id="permissionButton" type="button">権限取得</button>
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="section-title">
+            <h3>通信 / 保存</h3>
+          </div>
+          <div class="security-list">
+            <div class="security-item"><span>Transport</span><strong class="ok">HTTPS / WSS</strong></div>
+            <div class="security-item"><span>Conversation DB</span><strong>なし</strong></div>
+            <div class="security-item"><span>LLM payload</span><strong>直近1-3分</strong></div>
+            <div class="security-item"><span>Server logs</span><strong>本文なし</strong></div>
+          </div>
+        </section>
+
+        <div class="setup-actions">
+          <span class="meta-row">sessionProfileを作成し、文字起こし画面へ進みます。</span>
+          <button class="btn primary" id="startSessionButton" type="button">セッション開始</button>
+        </div>
+      </aside>
+
+      <section class="pane main-pane" aria-labelledby="transcriptTitle">
+        <div class="pane-header">
+          <div class="pane-title">
+            <h2 id="transcriptTitle">リアルタイム文字起こし</h2>
+            <p id="sourceLabel">入力: マイク / final transcript判定</p>
+          </div>
+          <button class="btn" id="addTranscriptButton" type="button">発話追加</button>
+        </div>
+
+        <div class="transcript-toolbar">
+          <div class="topic-row" aria-label="検出トピック">
+            <span class="topic">予算</span>
+            <span class="topic">役員会</span>
+            <span class="topic">対象範囲</span>
+            <span class="topic">権限</span>
+            <span class="topic">導入時期</span>
+          </div>
+          <span class="chip" id="sttStatus">Cloud STT / encrypted</span>
+        </div>
+
+        <div class="transcript" id="transcript">
+          <article class="line">
+            <time class="time">00:22</time>
+            <div class="bubble">
+              <div class="speaker">相手</div>
+              <p class="utterance">月末になると問い合わせが一気に増えて、担当者が休むと請求関連の確認が止まることがあります。</p>
+            </div>
+          </article>
+          <article class="line">
+            <time class="time">00:46</time>
+            <div class="bubble self">
+              <div class="speaker">自分</div>
+              <p class="utterance">最初の対象は請求関連の問い合わせから絞るイメージで合っていますか。</p>
+            </div>
+          </article>
+          <article class="line">
+            <time class="time">01:08</time>
+            <div class="bubble">
+              <div class="speaker">相手</div>
+              <p class="utterance">はい。ただ、来月の役員会で予算が通るかどうかが決まるので、そこまでに概算が必要です。</p>
+            </div>
+          </article>
+          <article class="line">
+            <time class="time">01:34</time>
+            <div class="bubble">
+              <div class="speaker">相手</div>
+              <p class="utterance">閲覧だけしたい部署と、更新できる担当者は分けたいです。</p>
+            </div>
+          </article>
+        </div>
+
+        <div class="bottom-bar">
+          <div class="level" aria-label="audio level">
+            <span></span><span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span><span></span>
+          </div>
+          <span class="meta-row" id="bufferState">browser memory / 直近 3分 / active cards 3</span>
+        </div>
+      </section>
+
+      <aside class="pane coach-pane" aria-labelledby="coachTitle">
+        <div class="pane-header">
+          <div class="pane-title">
+            <h2 id="coachTitle">AI補助カード</h2>
+            <p id="coachMode">sales playbook / max active 3</p>
+          </div>
+          <button class="btn primary" id="judgeButton" type="button">再判定</button>
+        </div>
+
+        <div class="coach-body">
+          <div class="coach-stats">
+            <div class="stat"><span>active</span><strong id="activeCount">3</strong></div>
+            <div class="stat"><span>queued</span><strong id="queueCount">2</strong></div>
+            <div class="stat"><span>done</span><strong id="doneCount">0</strong></div>
+          </div>
+
+          <div class="card-list" id="activeCards"></div>
+
+          <div class="queue">
+            <div class="section-title">
+              <h3>待機 / あとで回収</h3>
+              <span class="meta-row" id="replacementLog">scoreで自動入れ替え</span>
+            </div>
+            <div class="queue-list" id="queueCards"></div>
+          </div>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <aside class="report" id="report" aria-labelledby="reportTitle">
+    <h3 id="reportTitle">Session Report</h3>
+    <div class="report-section">
+      <strong>聞けたこと</strong>
+      <ul>
+        <li>初期対象は請求関連の問い合わせ</li>
+        <li>閲覧権限と更新権限を分けたい</li>
+      </ul>
+    </div>
+    <div class="report-section">
+      <strong>聞けなかったこと</strong>
+      <ul>
+        <li>役員会での最終決裁者</li>
+        <li>概算に必要な対象件数</li>
+      </ul>
+    </div>
+    <div class="report-section">
+      <strong>次回確認</strong>
+      <ul>
+        <li>予算枠と承認フロー</li>
+        <li>トライアル成功条件</li>
+      </ul>
+    </div>
+  </aside>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    const activeCardsEl = document.getElementById("activeCards");
+    const queueCardsEl = document.getElementById("queueCards");
+    const activeCountEl = document.getElementById("activeCount");
+    const queueCountEl = document.getElementById("queueCount");
+    const doneCountEl = document.getElementById("doneCount");
+    const replacementLog = document.getElementById("replacementLog");
+    const toast = document.getElementById("toast");
+    const timer = document.getElementById("timer");
+    const pauseButton = document.getElementById("pauseButton");
+    const startSessionButton = document.getElementById("startSessionButton");
+    const backToSetupButton = document.getElementById("backToSetupButton");
+    const recordingState = document.getElementById("recordingState");
+    const permissionButton = document.getElementById("permissionButton");
+    const permissionState = document.getElementById("permissionState");
+    const sources = document.getElementById("sources");
+    const sourceLabel = document.getElementById("sourceLabel");
+    const meetingTypes = document.getElementById("meetingTypes");
+    const profileSummary = document.getElementById("profileSummary");
+    const coachMode = document.getElementById("coachMode");
+    const report = document.getElementById("report");
+    const transcript = document.getElementById("transcript");
+
+    const cards = [
+      {
+        id: "decision-maker",
+        state: "active",
+        tag: "今聞く",
+        tagClass: "now",
+        score: 91,
+        pinned: false,
+        dedupeKey: "decision-maker",
+        title: "役員会で誰が最終判断するか確認",
+        body: "予算と役員会の話が出ていますが、最終決裁者と必要資料が未確認です。",
+        ask: "役員会では、どなたが最終判断される想定ですか？",
+        reason: "予算 / 役員会 / 概算"
+      },
+      {
+        id: "permission-scope",
+        state: "active",
+        tag: "深掘り",
+        tagClass: "deep",
+        score: 78,
+        pinned: false,
+        dedupeKey: "permission-scope",
+        title: "閲覧権限と更新権限の分離条件",
+        body: "権限分離の要望が出ているため、対象部署と操作範囲を切り分ける必要があります。",
+        ask: "閲覧だけの部署と、更新できる担当者はどのように分けたいですか？",
+        reason: "閲覧 / 更新 / 部署"
+      },
+      {
+        id: "target-volume",
+        state: "active",
+        tag: "深掘り",
+        tagClass: "deep",
+        score: 69,
+        pinned: false,
+        dedupeKey: "target-volume",
+        title: "月末問い合わせの規模を数値化",
+        body: "月末に増えることは分かりましたが、件数や対応時間は未確認です。",
+        ask: "月末は通常月と比べて、件数や対応時間はどのくらい増えますか？",
+        reason: "月末 / 問い合わせ増"
+      },
+      {
+        id: "trial-success",
+        state: "queued",
+        tag: "あとで回収",
+        tagClass: "later",
+        score: 63,
+        pinned: false,
+        dedupeKey: "trial-success",
+        title: "トライアル成功条件",
+        body: "小さく始める場合、成功条件を先に決める必要があります。",
+        ask: "一部チームで試す場合、どの状態になれば成功と言えそうですか？",
+        reason: "一部チーム / 試す"
+      },
+      {
+        id: "current-tools",
+        state: "queued",
+        tag: "あとで回収",
+        tagClass: "later",
+        score: 57,
+        pinned: false,
+        dedupeKey: "current-tools",
+        title: "既存ツール連携の有無",
+        body: "現行運用で使っているツールの確認が残っています。",
+        ask: "いま使っている管理表やツールは、今後も残す想定ですか？",
+        reason: "現行運用 / 管理表"
+      }
+    ];
+
+    const incoming = [
+      {
+        id: "urgent-materials",
+        state: "queued",
+        tag: "今聞く",
+        tagClass: "now",
+        score: 96,
+        pinned: false,
+        dedupeKey: "board-materials",
+        title: "役員会に必要な資料を今確認",
+        body: "来月の役員会までに概算が必要なため、資料形式と提出期限の確認が優先です。",
+        ask: "役員会に出すには、概算以外にどの資料が必要ですか？",
+        reason: "役員会 / 概算 / 期限"
+      },
+      {
+        id: "security-approval",
+        state: "queued",
+        tag: "曖昧",
+        tagClass: "risk",
+        score: 84,
+        pinned: false,
+        dedupeKey: "security-approval",
+        title: "権限要件の承認者",
+        body: "権限分離は出ていますが、誰が承認するかが未確認です。",
+        ask: "権限設定は、どなたが承認する運用になりそうですか？",
+        reason: "権限 / 承認"
+      }
+    ];
+
+    let incomingIndex = 0;
+    let doneCount = 0;
+    let seconds = 0;
+    let paused = false;
+    let sessionStarted = false;
+    let selectedSource = "マイク";
+
+    function showToast(message) {
+      toast.textContent = message;
+      toast.classList.add("show");
+      window.clearTimeout(showToast.timer);
+      showToast.timer = window.setTimeout(() => toast.classList.remove("show"), 1800);
+    }
+
+    function formatTime(total) {
+      const m = String(Math.floor(total / 60)).padStart(2, "0");
+      const s = String(total % 60).padStart(2, "0");
+      return `${m}:${s}`;
+    }
+
+    function activeCards() {
+      return cards.filter(card => card.state === "active").sort((a, b) => b.score - a.score);
+    }
+
+    function queuedCards() {
+      return cards.filter(card => card.state === "queued" || card.state === "later").sort((a, b) => b.score - a.score);
+    }
+
+    function addOrPromoteCard(card) {
+      const duplicate = cards.find(item => item.dedupeKey === card.dedupeKey && item.state !== "dismissed" && item.state !== "done");
+      if (duplicate) {
+        duplicate.score = Math.max(duplicate.score, card.score);
+        duplicate.title = card.title;
+        duplicate.body = card.body;
+        duplicate.ask = card.ask;
+        duplicate.reason = card.reason;
+        replacementLog.textContent = "重複カードを更新";
+        renderCards();
+        return;
+      }
+
+      const active = activeCards();
+      if (active.length < 3) {
+        card.state = "active";
+        cards.push(card);
+        replacementLog.textContent = "active枠に追加";
+        renderCards();
+        return;
+      }
+
+      const replaceable = active.filter(item => !item.pinned).sort((a, b) => a.score - b.score)[0];
+      if (replaceable && card.score > replaceable.score) {
+        replaceable.state = "queued";
+        card.state = "active";
+        cards.push(card);
+        replacementLog.textContent = `${replaceable.title} を待機へ移動`;
+      } else {
+        card.state = "queued";
+        cards.push(card);
+        replacementLog.textContent = "active枠は維持";
+      }
+      renderCards();
+    }
+
+    function renderCards() {
+      activeCardsEl.innerHTML = "";
+      queueCardsEl.innerHTML = "";
+
+      activeCards().forEach(card => {
+        const article = document.createElement("article");
+        article.className = `coach-card ${card.tagClass === "now" ? "now" : ""} ${card.pinned ? "pinned" : ""}`;
+        article.dataset.id = card.id;
+        article.innerHTML = `
+          <div class="card-head">
+            <span class="tag ${card.tagClass}">${card.tag}</span>
+            <span class="score">score ${card.score}</span>
+          </div>
+          <div class="card-main">
+            <h3>${card.title}</h3>
+            <p>${card.body}</p>
+            <div class="ask">${card.ask}</div>
+          </div>
+          <div class="card-foot">
+            <span class="meta-row">根拠: ${card.reason}</span>
+            <div class="card-actions">
+              <button class="mini ${card.pinned ? "active" : ""}" type="button" data-action="pin">${card.pinned ? "固定中" : "固定"}</button>
+              <button class="mini" type="button" data-action="done">聞いた</button>
+              <button class="mini" type="button" data-action="later">あとで</button>
+              <button class="mini" type="button" data-action="dismiss">不要</button>
+            </div>
+          </div>
+        `;
+        activeCardsEl.appendChild(article);
+      });
+
+      queuedCards().forEach(card => {
+        const item = document.createElement("div");
+        item.className = "queue-item";
+        item.innerHTML = `<span>${card.title}</span><strong class="score">${card.score}</strong>`;
+        queueCardsEl.appendChild(item);
+      });
+
+      activeCountEl.textContent = activeCards().length;
+      queueCountEl.textContent = queuedCards().length;
+      doneCountEl.textContent = doneCount;
+      document.getElementById("bufferState").textContent = `browser memory / 直近 3分 / active cards ${activeCards().length}`;
+    }
+
+    function buildProfileLabel() {
+      const selectedType = meetingTypes.querySelector("button.active")?.dataset.type || "sales";
+      const selectedIndustry = document.getElementById("industry").value;
+      const selectedRole = document.getElementById("role").value;
+      return `${selectedType} / ${selectedIndustry} / ${selectedRole}`;
+    }
+
+    function showCoachScreen() {
+      sessionStarted = true;
+      paused = false;
+      seconds = 0;
+      document.body.classList.remove("setup-mode");
+      document.body.classList.add("coach-mode");
+      recordingState.textContent = "録音中";
+      pauseButton.textContent = "一時停止";
+      timer.textContent = formatTime(seconds);
+      profileSummary.textContent = buildProfileLabel();
+      sourceLabel.textContent = `入力: ${selectedSource} / final transcript判定`;
+      showToast("文字起こし画面へ遷移しました");
+    }
+
+    function showSetupScreen() {
+      sessionStarted = false;
+      paused = true;
+      document.body.classList.remove("coach-mode");
+      document.body.classList.add("setup-mode");
+      recordingState.textContent = "準備中";
+      pauseButton.textContent = "一時停止";
+      report.classList.remove("show");
+      showToast("Session Setupへ戻りました");
+    }
+
+    activeCardsEl.addEventListener("click", event => {
+      const button = event.target.closest("button");
+      if (!button) return;
+      const cardEl = button.closest("[data-id]");
+      const card = cards.find(item => item.id === cardEl.dataset.id);
+      if (!card) return;
+
+      const action = button.dataset.action;
+      if (action === "pin") {
+        card.pinned = !card.pinned;
+        replacementLog.textContent = card.pinned ? "pinnedを保護" : "pinned解除";
+      }
+      if (action === "done") {
+        card.state = "done";
+        doneCount += 1;
+        const next = queuedCards()[0];
+        if (next) next.state = "active";
+        replacementLog.textContent = "確認済み";
+      }
+      if (action === "later") {
+        card.state = "later";
+        const next = queuedCards().find(item => item.id !== card.id);
+        if (next) next.state = "active";
+        replacementLog.textContent = "あとで回収へ移動";
+      }
+      if (action === "dismiss") {
+        card.state = "dismissed";
+        const next = queuedCards()[0];
+        if (next) next.state = "active";
+        replacementLog.textContent = "不要として抑制";
+      }
+      renderCards();
+    });
+
+    document.getElementById("judgeButton").addEventListener("click", () => {
+      const template = incoming[incomingIndex % incoming.length];
+      incomingIndex += 1;
+      addOrPromoteCard({ ...template, id: `${template.id}-${incomingIndex}` });
+      showToast("再判定しました");
+    });
+
+    startSessionButton.addEventListener("click", () => {
+      showCoachScreen();
+    });
+
+    backToSetupButton.addEventListener("click", () => {
+      showSetupScreen();
+    });
+
+    document.getElementById("addTranscriptButton").addEventListener("click", () => {
+      const article = document.createElement("article");
+      article.className = "line";
+      article.innerHTML = `
+        <time class="time">${formatTime(seconds)}</time>
+        <div class="bubble">
+          <div class="speaker">相手</div>
+          <p class="utterance">役員会にはセキュリティ面の説明も必要かもしれません。権限周りを整理しておきたいです。</p>
+        </div>
+      `;
+      transcript.appendChild(article);
+      transcript.scrollTop = transcript.scrollHeight;
+      showToast("final transcriptを追加しました");
+    });
+
+    sources.addEventListener("click", event => {
+      const button = event.target.closest("button");
+      if (!button) return;
+      sources.querySelectorAll("button").forEach(item => item.classList.remove("active"));
+      button.classList.add("active");
+      selectedSource = button.dataset.source;
+      sourceLabel.textContent = `入力: ${selectedSource} / final transcript判定`;
+      permissionState.textContent = "未許可";
+      permissionState.className = "warn";
+    });
+
+    permissionButton.addEventListener("click", () => {
+      permissionState.textContent = "許可済み";
+      permissionState.className = "ok";
+      showToast(`${selectedSource} の権限を取得しました`);
+    });
+
+    meetingTypes.addEventListener("click", event => {
+      const button = event.target.closest("button");
+      if (!button) return;
+      meetingTypes.querySelectorAll("button").forEach(item => item.classList.remove("active"));
+      button.classList.add("active");
+      const type = button.dataset.type;
+      const mode = {
+        sales: "sales / manufacturing / discovery",
+        requirements: "requirements / web-app / scope",
+        interview: "recruiting / role-fit / evidence",
+        research: "user-research / behavior / pain"
+      }[type];
+      profileSummary.textContent = mode;
+      coachMode.textContent = `${type} playbook / max active 3`;
+    });
+
+    pauseButton.addEventListener("click", () => {
+      if (!sessionStarted) return;
+      paused = !paused;
+      pauseButton.textContent = paused ? "再開" : "一時停止";
+      recordingState.textContent = paused ? "停止中" : "録音中";
+    });
+
+    document.getElementById("endButton").addEventListener("click", () => {
+      report.classList.toggle("show");
+    });
+
+    window.setInterval(() => {
+      if (paused || !sessionStarted) return;
+      seconds += 1;
+      timer.textContent = formatTime(seconds);
+    }, 1000);
+
+    renderCards();
+    timer.textContent = formatTime(seconds);
+    recordingState.textContent = "準備中";
+  </script>
+</body>
+</html>
