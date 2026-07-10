@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   getAudioSourceCapabilities,
   requestAudioSourceStream,
@@ -10,11 +10,20 @@ import {
   getBrowserAuthConfig,
   getCurrentSupabaseAccessToken,
   getCurrentSupabaseUser,
-  signInWithGoogleOAuth
+  signInWithGoogleOAuth,
+  signOutCurrentSession
 } from "@/lib/auth-client";
 import { applyCoachCardCandidates, countCardsByStatus, updateCardStatus } from "@/lib/coach-card";
 import { createDummyTranscriptPair } from "@/lib/dummy-transcript";
 import { buildJsonExport, buildMarkdownExport } from "@/lib/export";
+import {
+  deleteLocalSession,
+  listLocalSessions,
+  loadLocalSession,
+  migrateLegacyLocalSessions,
+  saveLocalSession,
+  type LocalSessionSummary
+} from "@/lib/local-session-storage";
 import {
   connectOpenAiRealtimeTranscription,
   realtimeTranscriptEventToSegment,
@@ -41,7 +50,13 @@ import type {
   TranscriptSegment
 } from "@/lib/types";
 
-type Screen = "login" | "setup" | "session" | "report";
+type Screen = "login" | "credential" | "setup" | "session" | "report";
+
+type OpenAiCredentialStatus = {
+  provider: "openai";
+  configured: boolean;
+  updatedAt: string | null;
+};
 
 const COACH_GATE_HEARTBEAT_MS = 1_000;
 
@@ -62,6 +77,19 @@ function downloadText(filename: string, text: string, type: string) {
   anchor.download = filename;
   anchor.click();
   URL.revokeObjectURL(url);
+}
+
+function currentTimestampMs(): number {
+  return Date.now();
+}
+
+function readLocalSessionsForUser(user: AuthUser): LocalSessionSummary[] {
+  if (typeof window === "undefined") return [];
+
+  if (user.role === "owner") {
+    migrateLegacyLocalSessions(window.localStorage, user.id);
+  }
+  return listLocalSessions(window.localStorage, user.id);
 }
 
 async function requestHeaders(): Promise<Record<string, string>> {
@@ -106,8 +134,21 @@ async function getJson<T>(url: string): Promise<T> {
   });
 
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text || `Request failed: ${response.status}`);
+    throw new Error((await response.text()) || `Request failed: ${response.status}`);
+  }
+
+  return (await response.json()) as T;
+}
+
+async function putJson<T>(url: string, body: unknown): Promise<T> {
+  const response = await fetch(url, {
+    method: "PUT",
+    headers: await requestHeaders(),
+    body: JSON.stringify(body)
+  });
+
+  if (!response.ok) {
+    throw new Error((await response.text()) || `Request failed: ${response.status}`);
   }
 
   return (await response.json()) as T;
@@ -122,11 +163,14 @@ export function RealtimeQuestionCoachApp() {
   const [partialSegment, setPartialSegment] = useState<TranscriptSegment | null>(null);
   const [cards, setCards] = useState<CoachCard[]>([]);
   const [report, setReport] = useState<SessionReport | null>(null);
-  const [dummyIndex, setDummyIndex] = useState(0);
   const [lastLlmCallAt, setLastLlmCallAt] = useState(0);
   const [lastDispatchKey, setLastDispatchKey] = useState<string | null>(null);
   const [coachInFlight, setCoachInFlight] = useState(false);
   const [sttActive, setSttActive] = useState(false);
+  const [savedSessions, setSavedSessions] = useState<LocalSessionSummary[]>([]);
+  const [openAiApiKey, setOpenAiApiKey] = useState("");
+  const [savingCredential, setSavingCredential] = useState(false);
+  const [credentialRequired, setCredentialRequired] = useState(false);
   const [statusMessage, setStatusMessage] = useState("Google OAuth adapter is using local mock fallback.");
   const lastDispatchKeyRef = useRef<string | null>(null);
   const coachInFlightRef = useRef(false);
@@ -148,6 +192,30 @@ export function RealtimeQuestionCoachApp() {
   const capabilities = useMemo(() => getAudioSourceCapabilities(globalThis.navigator), []);
   const cardCounts = countCardsByStatus(cards);
   const browserAuthConfig = useMemo(() => getBrowserAuthConfig(), []);
+  const continueAfterAuthentication = useCallback(async () => {
+    if (browserAuthConfig.authMode === "mock") {
+      setScreen("setup");
+      setStatusMessage("Google OAuth local mock session is active.");
+      return;
+    }
+
+    try {
+      const credential = await getJson<OpenAiCredentialStatus>("/api/provider-credential/openai");
+      if (credential.configured) {
+        setCredentialRequired(false);
+        setScreen("setup");
+        setStatusMessage("Supabase Google OAuth session is active.");
+        return;
+      }
+      setCredentialRequired(true);
+      setScreen("credential");
+      setStatusMessage("利用を開始するにはOpenAI APIキーを設定してください。");
+    } catch {
+      setCredentialRequired(true);
+      setScreen("credential");
+      setStatusMessage("OpenAI APIキーの設定状態を確認できませんでした。設定を保存して続行してください。");
+    }
+  }, [browserAuthConfig.authMode]);
 
   useEffect(() => {
     if (browserAuthConfig.authMode !== "supabase") return;
@@ -159,10 +227,14 @@ export function RealtimeQuestionCoachApp() {
       }
 
       setUser(supabaseUser);
-      setScreen("setup");
-      setStatusMessage("Supabase Google OAuth session is active.");
+      try {
+        setSavedSessions(readLocalSessionsForUser(supabaseUser));
+      } catch {
+        setSavedSessions([]);
+      }
+      void continueAfterAuthentication();
     });
-  }, [browserAuthConfig.authMode]);
+  }, [browserAuthConfig.authMode, continueAfterAuthentication]);
 
   useEffect(() => {
     sessionProfileRef.current = sessionProfile;
@@ -196,29 +268,62 @@ export function RealtimeQuestionCoachApp() {
       return;
     }
 
-    setUser({
+    const mockUser: AuthUser = {
       id: "dev-user-001",
       email: "owner@example.local",
       role: "owner",
       provider: "google"
-    });
-    setScreen("setup");
-    setStatusMessage("Google OAuth local mock session is active.");
+    };
+    setUser(mockUser);
+    try {
+      setSavedSessions(readLocalSessionsForUser(mockUser));
+    } catch {
+      setSavedSessions([]);
+    }
+    await continueAfterAuthentication();
   }
 
-  async function requestDiagnostics() {
-    const diagnostics = await getJson<{
-      providerReady: boolean;
-      llmProvider: string;
-      sttProvider: string;
-      missingRequiredServerKeys: string[];
-    }>("/api/diagnostics");
+  async function saveCredential() {
+    if (!openAiApiKey.trim()) return;
+    setSavingCredential(true);
+    try {
+      await putJson<OpenAiCredentialStatus>("/api/provider-credential/openai", {
+        apiKey: openAiApiKey
+      });
+      setOpenAiApiKey("");
+      setCredentialRequired(false);
+      setScreen("setup");
+      setStatusMessage("OpenAI APIキーを安全に保存しました。");
+    } catch {
+      setStatusMessage("APIキーを保存できませんでした。キーとSupabaseのサーバー設定を確認してください。");
+    } finally {
+      setSavingCredential(false);
+    }
+  }
 
-    setStatusMessage(
-      diagnostics.providerReady
-        ? `Provider diagnostics OK: LLM=${diagnostics.llmProvider}, STT=${diagnostics.sttProvider}.`
-        : `Provider diagnostics not ready: ${diagnostics.missingRequiredServerKeys.join(", ") || "invalid config"}.`
-    );
+  async function logout() {
+    stopAudioTranscription();
+    const result = await signOutCurrentSession();
+    if (!result.ok) {
+      setStatusMessage(result.message);
+      return;
+    }
+
+    setUser(null);
+    setSessionProfile(null);
+    sessionProfileRef.current = null;
+    setSegments([]);
+    segmentsRef.current = [];
+    setPartialSegment(null);
+    setCards([]);
+    cardsRef.current = [];
+    setReport(null);
+    setSavedSessions([]);
+    setOpenAiApiKey("");
+    setSavingCredential(false);
+    setCredentialRequired(false);
+    setScreen("login");
+    setStatusMessage("ログアウトしました。ブラウザ内の保存済みセッションは削除していません。");
   }
 
   async function startSession() {
@@ -239,11 +344,11 @@ export function RealtimeQuestionCoachApp() {
 
     setUser(response.user);
     setSessionProfile(response.sessionProfile);
+    sessionProfileRef.current = response.sessionProfile;
     setSegments([]);
     setPartialSegment(null);
     setCards([]);
     setReport(null);
-    setDummyIndex(0);
     setLastLlmCallAt(0);
     setLastDispatchKey(null);
     setCoachInFlight(false);
@@ -255,7 +360,20 @@ export function RealtimeQuestionCoachApp() {
     sttSequenceRef.current = 0;
     sttSequenceByProviderItemRef.current = new Map();
     setScreen("session");
-    setStatusMessage("Session profile created in browser memory.");
+
+    if (response.sessionProfile.audioSource === "dummy") {
+      const pair = createDummyTranscriptPair(response.sessionProfile.conversationType, 0);
+      const nextSegments = mergeTranscriptSegment([], pair.final);
+      setSegments(nextSegments);
+      segmentsRef.current = nextSegments;
+      setStatusMessage("ダミー文字起こしを自動開始しました。");
+      queueMicrotask(() => {
+        void runCoachRef.current(nextSegments);
+      });
+      return;
+    }
+
+    void startAudioTranscription(response.sessionProfile);
   }
 
   function stopAudioTranscription() {
@@ -274,26 +392,30 @@ export function RealtimeQuestionCoachApp() {
     return next;
   }
 
-  async function startAudioTranscription() {
-    if (!sessionProfile) return;
+  async function startAudioTranscription(profileOverride?: SessionProfile) {
+    const activeSessionProfile = profileOverride ?? sessionProfileRef.current;
+    if (!activeSessionProfile) return;
 
     stopAudioTranscription();
-    setStatusMessage(`${getAudioSourceLabel(sessionProfile.audioSource)}の音声接続を開始しています。`);
+    setStatusMessage(
+      `${getAudioSourceLabel(activeSessionProfile.audioSource)}の音声接続を開始しています。`
+    );
 
     const streamResult = await requestAudioSourceStream(
-      sessionProfile.audioSource,
+      activeSessionProfile.audioSource,
       globalThis.navigator
     );
     const activeProfile =
-      streamResult.activeSource === sessionProfile.audioSource
-        ? sessionProfile
+      streamResult.activeSource === activeSessionProfile.audioSource
+        ? activeSessionProfile
         : {
-            ...sessionProfile,
+            ...activeSessionProfile,
             audioSource: streamResult.activeSource
           };
 
-    if (activeProfile !== sessionProfile) {
+    if (activeProfile !== activeSessionProfile) {
       setSessionProfile(activeProfile);
+      sessionProfileRef.current = activeProfile;
       setSetup((current) => ({
         ...current,
         audioSource: streamResult.activeSource
@@ -416,7 +538,7 @@ export function RealtimeQuestionCoachApp() {
     try {
       coachInFlightRef.current = true;
       setCoachInFlight(true);
-      const dispatchStartedAt = Date.now();
+      const dispatchStartedAt = currentTimestampMs();
       setLastLlmCallAt(dispatchStartedAt);
       lastLlmCallAtRef.current = dispatchStartedAt;
       const response = await postJson<{
@@ -477,20 +599,6 @@ export function RealtimeQuestionCoachApp() {
     return () => globalThis.clearInterval(intervalId);
   }, [screen, sessionProfile]);
 
-  async function addNextDummyTranscript() {
-    if (!sessionProfile) return;
-
-    const pair = createDummyTranscriptPair(sessionProfile.conversationType, dummyIndex);
-    setPartialSegment(pair.partial);
-
-    const nextSegments = mergeTranscriptSegment(segments, pair.final);
-    setSegments(nextSegments);
-    segmentsRef.current = nextSegments;
-    setPartialSegment(null);
-    setDummyIndex((value) => value + 1);
-    await runCoach(nextSegments);
-  }
-
   async function endSession() {
     if (!sessionProfile) return;
     stopAudioTranscription();
@@ -546,31 +654,114 @@ export function RealtimeQuestionCoachApp() {
   }
 
   function saveLocal() {
-    if (!sessionProfile || !report) return;
-    localStorage.setItem(
-      `rqc:${sessionProfile.id}`,
-      buildJsonExport({
+    if (!user || !sessionProfile || !report) return;
+
+    try {
+      saveLocalSession(globalThis.localStorage, user.id, {
         sessionProfile,
         transcriptSegments: segments,
         cards,
         report
-      })
-    );
-    setStatusMessage("Saved locally in this browser.");
+      });
+      setSavedSessions(listLocalSessions(globalThis.localStorage, user.id));
+      setStatusMessage("このブラウザに保存しました。保存済みセッションから再表示できます。");
+    } catch {
+      setStatusMessage(
+        "ローカル保存に失敗しました。ブラウザのサイトデータ設定と空き容量を確認してください。"
+      );
+    }
+  }
+
+  function restoreSavedSession(sessionId: string) {
+    if (!user) return;
+
+    try {
+      const storedSession = loadLocalSession(globalThis.localStorage, user.id, sessionId);
+      if (!storedSession) {
+        setStatusMessage("保存データを読み込めませんでした。破損している可能性があります。");
+        return;
+      }
+
+      stopAudioTranscription();
+      const payload = storedSession.payload;
+      setSessionProfile(payload.sessionProfile);
+      sessionProfileRef.current = payload.sessionProfile;
+      setSetup({
+        conversationType: payload.sessionProfile.conversationType,
+        industry: payload.sessionProfile.industry,
+        purpose: payload.sessionProfile.purpose,
+        mustCheckText: payload.sessionProfile.mustCheckItems.join("\n"),
+        audioSource: payload.sessionProfile.audioSource,
+        consentNoServerStorage: true
+      });
+      setSegments(payload.transcriptSegments);
+      segmentsRef.current = payload.transcriptSegments;
+      setPartialSegment(null);
+      setCards(payload.cards);
+      cardsRef.current = payload.cards;
+      setReport(payload.report);
+      setLastLlmCallAt(0);
+      lastLlmCallAtRef.current = 0;
+      setLastDispatchKey(null);
+      lastDispatchKeyRef.current = null;
+      setCoachInFlight(false);
+      coachInFlightRef.current = false;
+      setScreen("report");
+      setStatusMessage("保存済みセッションをこのブラウザから読み込みました。");
+    } catch {
+      setStatusMessage("保存データの読み込みに失敗しました。ブラウザ設定を確認してください。");
+    }
+  }
+
+  function removeSavedSession(sessionId: string) {
+    if (!user) return;
+
+    try {
+      deleteLocalSession(globalThis.localStorage, user.id, sessionId);
+      setSavedSessions(listLocalSessions(globalThis.localStorage, user.id));
+      setStatusMessage("保存済みセッションをこのブラウザから削除しました。");
+    } catch {
+      setStatusMessage("保存済みセッションを削除できませんでした。ブラウザ設定を確認してください。");
+    }
+  }
+
+  function closeSavedSession() {
+    stopAudioTranscription();
+    setSessionProfile(null);
+    setSegments([]);
+    segmentsRef.current = [];
+    setPartialSegment(null);
+    setCards([]);
+    cardsRef.current = [];
+    setReport(null);
+    setScreen("setup");
+    setStatusMessage("保存済みデータを残してセッションを閉じました。");
   }
 
   function discardSession() {
     stopAudioTranscription();
-    if (sessionProfile) {
-      localStorage.removeItem(`rqc:${sessionProfile.id}`);
+    let localDeleteFailed = false;
+    if (user && sessionProfile) {
+      try {
+        deleteLocalSession(globalThis.localStorage, user.id, sessionProfile.id);
+        setSavedSessions(listLocalSessions(globalThis.localStorage, user.id));
+      } catch {
+        localDeleteFailed = true;
+      }
     }
     setSessionProfile(null);
     setSegments([]);
+    segmentsRef.current = [];
     setPartialSegment(null);
     setCards([]);
+    cardsRef.current = [];
     setReport(null);
     setScreen("setup");
-    setStatusMessage("Session data discarded from browser memory.");
+    setStatusMessage(
+      localDeleteFailed
+        ? "ブラウザメモリは破棄しましたが、ローカル保存データを削除できませんでした。"
+        : "セッションデータをブラウザメモリとローカル保存から破棄しました。"
+    );
   }
 
   return (
@@ -588,6 +779,24 @@ export function RealtimeQuestionCoachApp() {
         <div className="topbar-actions">
           <span className="status-pill">{user ? user.role : "signed out"}</span>
           <span className="status-pill neutral">{screen}</span>
+          {user ? (
+            <button
+              type="button"
+              onClick={() => {
+                stopAudioTranscription();
+                setCredentialRequired(false);
+                setScreen("credential");
+                setStatusMessage("OpenAI APIキーを更新できます。");
+              }}
+            >
+              ユーザー設定
+            </button>
+          ) : null}
+          {user ? (
+            <button type="button" onClick={logout}>
+              ログアウト
+            </button>
+          ) : null}
         </div>
       </header>
 
@@ -605,6 +814,42 @@ export function RealtimeQuestionCoachApp() {
           <button className="primary-action" type="button" onClick={loginWithGoogle}>
             Googleでログイン
           </button>
+        </section>
+      ) : null}
+
+      {screen === "credential" ? (
+        <section className="login-view" aria-labelledby="credential-title">
+          <div className="login-copy">
+            <p className="eyebrow">OpenAI</p>
+            <h2 id="credential-title">OpenAI APIキーを設定</h2>
+            <p>
+              あなたのOpenAI APIキーを設定してください。キー本体は表示・保存し直さず、暗号化されたVaultにのみ保存します。
+            </p>
+          </div>
+          <label className="wide-field" htmlFor="openai-api-key">
+            OpenAI APIキー
+            <input
+              id="openai-api-key"
+              type="password"
+              value={openAiApiKey}
+              autoComplete="off"
+              spellCheck={false}
+              onChange={(event) => setOpenAiApiKey(event.target.value)}
+            />
+          </label>
+          <button
+            className="primary-action"
+            type="button"
+            disabled={savingCredential || !openAiApiKey.trim()}
+            onClick={() => void saveCredential()}
+          >
+            {savingCredential ? "保存中…" : "保存して続行"}
+          </button>
+          {!credentialRequired ? (
+            <button type="button" onClick={() => setScreen("setup")}>
+              会話前の設定へ戻る
+            </button>
+          ) : null}
         </section>
       ) : null}
 
@@ -712,6 +957,52 @@ export function RealtimeQuestionCoachApp() {
               セッション開始
             </button>
           </div>
+          <section className="saved-sessions" aria-labelledby="saved-sessions-title">
+            <div className="saved-sessions-header">
+              <div>
+                <p className="eyebrow">Browser Local Storage</p>
+                <h3 id="saved-sessions-title">保存済みセッション</h3>
+              </div>
+              <span>{savedSessions.length}件</span>
+            </div>
+            <p className="saved-sessions-note">
+              このブラウザに保存した設定・文字起こし・カード・レポートです。音声ファイルは含みません。
+            </p>
+            {savedSessions.length > 0 ? (
+              <ul className="saved-session-list">
+                {savedSessions.map((savedSession) => (
+                  <li key={savedSession.sessionId} className="saved-session-item">
+                    <div>
+                      <strong>{savedSession.purpose}</strong>
+                      <span>
+                        {getConversationTypeLabel(savedSession.conversationType)} / 保存日時{" "}
+                        <time dateTime={savedSession.savedAt}>
+                          {savedSession.savedAt.replace("T", " ").slice(0, 16)}
+                        </time>
+                      </span>
+                      <span>
+                        文字起こし {savedSession.transcriptCount}件 / カード {savedSession.cardCount}件
+                      </span>
+                    </div>
+                    <div className="saved-session-actions">
+                      <button type="button" onClick={() => restoreSavedSession(savedSession.sessionId)}>
+                        開く
+                      </button>
+                      <button
+                        className="danger-action"
+                        type="button"
+                        onClick={() => removeSavedSession(savedSession.sessionId)}
+                      >
+                        削除
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="empty-state">このブラウザに保存済みのセッションはありません。</p>
+            )}
+          </section>
         </section>
       ) : null}
 
@@ -732,17 +1023,15 @@ export function RealtimeQuestionCoachApp() {
               >
                 設定へ戻る
               </button>
-              <button type="button" onClick={requestDiagnostics}>
-                診断
-              </button>
-              <button type="button" disabled={sttActive} onClick={startAudioTranscription}>
+              <button
+                type="button"
+                disabled={sttActive}
+                onClick={() => void startAudioTranscription()}
+              >
                 音声接続開始
               </button>
               <button type="button" disabled={!sttActive} onClick={stopAudioTranscription}>
                 音声接続停止
-              </button>
-              <button type="button" onClick={addNextDummyTranscript}>
-                ダミー文字起こし開始
               </button>
               <button className="primary-action" type="button" onClick={endSession}>
                 終了
@@ -846,10 +1135,20 @@ export function RealtimeQuestionCoachApp() {
             <button type="button" onClick={saveLocal}>
               ローカル保存
             </button>
+            <button
+              type="button"
+              disabled={!savedSessions.some((savedSession) => savedSession.sessionId === sessionProfile.id)}
+              onClick={closeSavedSession}
+            >
+              保存済みデータを残して終了
+            </button>
             <button className="danger-action" type="button" onClick={discardSession}>
               破棄
             </button>
           </div>
+          <p className="local-save-note">
+            ローカル保存の対象は設定・文字起こし・カード・レポートです。音声ファイルは保存しません。
+          </p>
         </section>
       ) : null}
     </main>

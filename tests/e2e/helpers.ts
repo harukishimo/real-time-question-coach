@@ -14,7 +14,6 @@ export async function startDefaultSession(page: Page) {
 
 export async function buildReport(page: Page) {
   await startDefaultSession(page);
-  await page.getByRole("button", { name: "ダミー文字起こし開始" }).click();
   await expect(page.getByLabel("文字起こし")).toContainText("承認者");
   await page.getByRole("button", { name: "終了" }).click();
   await expect(page.getByRole("heading", { name: "振り返り" })).toBeVisible();

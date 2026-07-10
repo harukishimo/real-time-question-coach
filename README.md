@@ -13,7 +13,7 @@ The MVP is mock-first: it can run locally without real Supabase, STT, or LLM cre
 - Local Rule Gate to avoid constant LLM calls
 - Mock coach API and card engine with all active cards reachable in a scrollable pane and no fixed display cap
 - Audio source capture, short-lived STT token API, and OpenAI Realtime WebRTC client boundary
-- Session Report, Markdown export, JSON export, local browser save, and discard
+- Session Report, Markdown export, JSON export, recoverable local browser sessions, and discard
 - Security guardrails for no server DB persistence of conversation data and no body logging
 
 ## Local Setup
@@ -81,7 +81,7 @@ https://<your-app-domain>/auth/callback
 
 The callback URL is where Google/Supabase returns the browser after OAuth. It must be in the Supabase redirect allow list. The app uses the Supabase browser client for PKCE session hydration and sends the resulting access token to protected API routes as `Authorization: Bearer <token>`.
 
-Supabase user role metadata must explicitly be `owner` or `user`. Unknown, missing, or client-injected roles are rejected by protected API routes.
+Supabase user role metadata must explicitly be `owner` or `user`. User-editable metadata never grants privileges. `ログアウト` signs out only the current browser session.
 
 ## Checks
 
@@ -95,9 +95,17 @@ npm run build
 
 `npm run test:e2e` starts the local Next.js dev server through Playwright.
 
+## Local Session Save
+
+`ローカル保存` stores the session profile, finalized transcript, coach cards, and Session Report in this browser's `localStorage`. Records are scoped by the authenticated user ID so another account on the same browser cannot list or restore them. It does not save an audio file and does not upload the saved record to the server.
+
+After saving, use `保存済みデータを残して終了`. Saved sessions appear under `保存済みセッション` on Session Setup, where they can be reopened or deleted. Browser site-data deletion also removes these records.
+
 ## Audio And STT Status
 
 Playwright verifies browser microphone permission and a live `getUserMedia({ audio: true })` stream. The app now starts a retained browser audio stream, obtains a short-lived `/api/stt-token`, and, when `RQC_STT_PROVIDER=openai`, connects the browser directly to OpenAI Realtime over WebRTC with the ephemeral token. In mock mode the stream is immediately stopped after the token boundary is verified.
+
+Selecting `セッション開始` automatically starts the selected audio connection. The operator-only diagnostics and dummy-transcript trigger buttons are not shown; selecting the dummy source starts one test transcript automatically.
 
 The Next API route never accepts audio bytes, audio files, or remote audio URLs. Realtime transcript deltas/completions are normalized in the browser before becoming `TranscriptSegment` data. Physical speech-to-text accuracy and real provider smoke runs remain human-run only because they require external credentials, provider account settings, and real audio.
 

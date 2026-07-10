@@ -23,3 +23,17 @@ test("auth callback URL renders the app shell without exposing protected state",
   await expect(page.getByRole("heading", { name: "会話前の設定" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Googleでログイン" })).toBeVisible();
 });
+
+test("an authenticated user can log out without deleting browser-local saved sessions", async ({
+  page
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Googleでログイン" }).click();
+  await expect(page.getByRole("heading", { name: "会話前の設定" })).toBeVisible();
+
+  await page.getByRole("button", { name: "ログアウト" }).click();
+
+  await expect(page.getByRole("heading", { name: "Realtime Question Coach" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "会話前の設定" })).toHaveCount(0);
+  await expect(page.getByRole("status")).toContainText("ログアウトしました");
+});

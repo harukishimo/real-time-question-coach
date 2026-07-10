@@ -35,7 +35,6 @@ test("session setup fits desktop and tablet viewports", async ({ page }) => {
 test("realtime session fits desktop and tablet viewports", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await startDefaultSession(page);
-  await page.getByRole("button", { name: "ダミー文字起こし開始" }).click();
   await expect(page.getByLabel("文字起こし")).toContainText("承認者");
   await expectNoHorizontalOverflow(
     1280,

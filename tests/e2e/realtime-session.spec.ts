@@ -12,13 +12,6 @@ test("realtime session wires dummy transcript, coach cards, counts, and actions"
   });
 
   await startDefaultSession(page);
-  await page.getByRole("button", { name: "診断" }).click();
-  await expect(page.getByRole("status")).toContainText("Provider diagnostics OK:");
-  await expect(page.getByRole("status")).not.toContainText("sk-");
-
-  for (let index = 0; index < 3; index += 1) {
-    await page.getByRole("button", { name: "ダミー文字起こし開始" }).click();
-  }
 
   await expect(page.getByLabel("文字起こし")).toContainText("承認者");
   await expect(page.getByLabel("AI補助カード")).toContainText(/active \d+/);
@@ -75,13 +68,6 @@ test("active cards beyond six remain reachable inside the scrollable coach pane"
   });
 
   await startDefaultSession(page);
-  await Promise.all([
-    page.waitForResponse(
-      (response) =>
-        response.request().method() === "POST" && response.url().includes("/api/coach")
-    ),
-    page.getByRole("button", { name: "ダミー文字起こし開始" }).click()
-  ]);
 
   const coachPane = page.getByLabel("AI補助カード");
   const coachList = coachPane.locator(".coach-list");
@@ -117,7 +103,6 @@ test("manual recheck double click does not create duplicate in-flight coach disp
   });
 
   await startDefaultSession(page);
-  await page.getByRole("button", { name: "ダミー文字起こし開始" }).click();
   await expect(page.getByLabel("AI補助カード")).toContainText("確認");
 
   await page.route("**/api/coach", async (route) => {
@@ -145,7 +130,6 @@ test("local coach cards appear before delayed provider response", async ({ page 
   });
 
   await startDefaultSession(page);
-  await page.getByRole("button", { name: "ダミー文字起こし開始" }).click();
 
   await expect(page.getByLabel("AI補助カード")).toContainText(/active \d+/, {
     timeout: 500
@@ -155,24 +139,10 @@ test("local coach cards appear before delayed provider response", async ({ page 
   });
 });
 
-test("provider diagnostics not-ready UI shows env names without secrets", async ({ page }) => {
+test("operator-only diagnostics and dummy transcript controls are hidden", async ({ page }) => {
   await startDefaultSession(page);
-  await page.route("**/api/diagnostics", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        providerReady: false,
-        llmProvider: "openai",
-        sttProvider: "openai",
-        missingRequiredServerKeys: ["OPENAI_API_KEY", "STT_API_KEY"]
-      })
-    });
-  });
 
-  await page.getByRole("button", { name: "診断" }).click();
-
-  await expect(page.getByRole("status")).toContainText("Provider diagnostics not ready:");
-  await expect(page.getByRole("status")).toContainText("OPENAI_API_KEY");
-  await expect(page.getByRole("status")).not.toContainText("sk-");
+  await expect(page.getByRole("button", { name: "診断" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "ダミー文字起こし開始" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "音声接続開始" })).toBeVisible();
 });

@@ -2412,3 +2412,48 @@ not_performed:
   - merge
   - push
 ```
+
+## 2026-07-10T00:00:00+0900 - User provider credential migration authorized
+
+```yaml
+run_id: 2026-07-10T00:00:00+0900-user-provider-credentials-migration
+mode: human-approved scoped exception
+approver: current human in this thread
+scope:
+  - add one forward-only migration for public.user_provider_credentials
+  - store only a user-to-provider-to-Vault-secret-ID mapping
+  - enable RLS and deny direct browser-role table access
+  - add server-only credential status and upsert RPCs
+  - require an OpenAI API key setup screen after Supabase login when no key is configured
+schema:
+  table: public.user_provider_credentials
+  columns:
+    - user_id
+    - provider
+    - vault_secret_id
+    - created_at
+    - updated_at
+  excluded_columns:
+    - raw_api_key
+    - configured
+authorization:
+  direct_browser_access: denied
+  role_change: not included
+  credential_api: authenticated Next API only; status and update time only returned to browser
+secret_handling:
+  raw_key_storage: Supabase Vault only
+  raw_key_logging_or_return: prohibited
+excluded_data:
+  - audio
+  - transcript
+  - coach_card
+  - llm_input_output
+  - session_report
+verification:
+  - migration static review
+  - git diff check
+reflection:
+  status: pending separate human approval after migration review
+  allowed_command: supabase db push or approved CI migration job
+rollback: forward-only corrective migration only
+```

@@ -104,3 +104,32 @@ export async function getCurrentSupabaseAccessToken(): Promise<string | null> {
   const { data } = await supabase.auth.getSession();
   return data.session?.access_token ?? null;
 }
+
+export async function signOutCurrentSession(): Promise<
+  | { ok: true }
+  | {
+      ok: false;
+      message: string;
+    }
+> {
+  const config = getBrowserAuthConfig();
+  if (config.authMode === "mock") return { ok: true };
+
+  const supabase = getSupabaseBrowserClient();
+  if (!supabase) {
+    return {
+      ok: false,
+      message: "Supabase logout is not configured for this environment."
+    };
+  }
+
+  const { error } = await supabase.auth.signOut({ scope: "local" });
+  if (error) {
+    return {
+      ok: false,
+      message: "ログアウトに失敗しました。もう一度お試しください。"
+    };
+  }
+
+  return { ok: true };
+}

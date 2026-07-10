@@ -447,6 +447,79 @@ textarea {
   line-height: 1.65;
 }
 
+.saved-sessions {
+  margin-top: 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  background: var(--surface);
+}
+
+.saved-sessions-header,
+.saved-session-item,
+.saved-session-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.saved-sessions-header,
+.saved-session-item {
+  justify-content: space-between;
+}
+
+.saved-sessions-header h3 {
+  margin: 4px 0 0;
+  font-size: 16px;
+}
+
+.saved-sessions-header > span,
+.saved-session-item span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.saved-sessions-note,
+.local-save-note {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.saved-session-list {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.saved-session-item {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.saved-session-item > div:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.saved-session-item strong {
+  overflow-wrap: anywhere;
+}
+
+.saved-session-actions {
+  flex: 0 0 auto;
+}
+
+.local-save-note {
+  text-align: right;
+}
+
 @media (max-width: 900px) {
   .topbar,
   .view-header,
@@ -471,5 +544,14 @@ textarea {
   .coach-list {
     min-height: 360px;
     max-height: 520px;
+  }
+
+  .saved-session-item {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .saved-session-actions {
+    width: 100%;
   }
 }

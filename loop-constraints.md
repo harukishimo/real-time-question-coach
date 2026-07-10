@@ -44,7 +44,7 @@ MVPの基本フロー:
 - Deny List は「Loop が自律実行してはいけない操作、または自律編集してはいけない領域」を定義する。
 - Human Gate は「実装可能性はあるが、人間の判断、承認、補足、または終了前確認を必要とする作業」を定義する。
 - human gate 分岐条件の正本は `loop-human-gates.md` とする。L2 / L3 では実装開始前と終了前に必ず読み直す。
-- Deny List に該当する場合、人間の追加承認があっても Loop は自律実行しない。
+- Deny List に該当する場合、人間の追加承認があっても Loop は自律実行しない。ただし、本ファイルの「Scoped Exception: User Provider Credentials And Auth Role Provisioning」を満たす作業だけは、その明記された範囲で human-approved work として扱う。
 
 ## Repository-Specific Deny List
 
@@ -86,7 +86,7 @@ Observed path examples:
 
 ### Auth, Authorization, And Identity
 
-- Google OAuth / Supabase Auth の実provider設定、redirect URI、callback URL、session cookie policy、JWT validation、role mapping、RLS policy を自律変更しない。
+- Google OAuth / Supabase Auth の実provider設定、redirect URI、callback URL、session cookie policy、JWT validation、role mapping、RLS policy を自律変更しない。ただし、本ファイルの「Scoped Exception: User Provider Credentials And Auth Role Provisioning」に定める初期 `user` ロールの安全な付与は除く。
 - ユーザー権限、role、admin判定、最小権限の意味を緩める変更を行わない。
 - `user_metadata.role` などユーザーが自己編集できる可能性がある値を権限根拠として採用する変更を行わない。
 - 認証なしで保護APIへアクセス可能にする変更を行わない。
@@ -120,7 +120,7 @@ Observed path examples:
 
 ### Database, Storage, And Schema
 
-- DB migration、Supabase schema、RLS policy、storage bucket、Edge Function、database trigger、seed、direct SQL、bulk import、truncate、data cleanup を自律実行しない。
+- DB migration、Supabase schema、RLS policy、storage bucket、Edge Function、database trigger、seed、direct SQL、bulk import、truncate、data cleanup を自律実行しない。ただし、本ファイルの「Scoped Exception: User Provider Credentials And Auth Role Provisioning」に定める前方互換のmigration、最小権限RLS、必要最小限のserver-side RPCは除く。
 - ログイン機能以外の目的でサーバーDB保存範囲を拡張しない。
 - 会話データ、AIカード本文、LLM入出力、Session Report本文をDB schemaに追加しない。
 
@@ -131,6 +131,29 @@ Observed path examples:
 - `migrations/**`
 - `schema.sql`
 - `seed.sql`
+
+### Scoped Exception: User Provider Credentials And Auth Role Provisioning
+
+この例外は、ユーザー別のプロバイダー資格情報と初期アプリロールを安全に扱うためだけの限定的な許可である。適用には、現在のスレッドでの人間による明示承認、または同等に具体的なActivation Recordが必要である。許可対象、禁止対象、確認条件のいずれかが不足する場合は `human_gate_pending` とする。
+
+許可する変更は次だけとする。
+
+- `supabase/migrations/**` に、既存migrationを書き換えない前方互換のmigrationを追加すること。
+- `public.user_provider_credentials` または同等の資格情報マッピングテーブルを追加すること。保存できるのは `user_id`、`provider`、`vault_secret_id`、作成・更新時刻、及び削除状態だけである。
+- APIキーの生値をSupabase Vaultへ保存し、通常テーブルにはVaultの秘密IDだけを保存すること。
+- 上記テーブルと、資格情報の保存・更新・削除・サーバー専用解決に必要な最小限のRLS及びRPCを追加すること。
+- 認証済みNext API経由の資格情報状態確認・保存と、それに必要なログイン後の設定画面を追加すること。ブラウザへ返せるのは設定状態と更新日時だけであり、APIキー本体を返してはならない。
+- 初回ログイン時に、サーバー管理下で最小権限の `app_metadata.role = user` を付与する仕組みを追加すること。`user_metadata` を権限根拠にしてはならず、`owner` への昇格を自動化してはならない。
+
+次の変更はこの例外の対象外であり、引き続き禁止とする。
+
+- `auth.users` の直接変更、ユーザー自身によるロール変更、owner権限の自動付与、認証なしアクセス。
+- APIキー、Vaultの復号済み値、service role keyをブラウザ、通常DBテーブル、ログ、診断、テストfixture、エラー応答、gitへ出力すること。
+- 会話本文、音声、文字起こし、AIカード、LLM入出力、Session Report本文をサーバーDBへ保存すること。
+- 既存migrationの変更、seed、bulk import、truncate、データ削除、無関係なschema変更。
+- Supabase、OpenAI、STT、Vercelの管理画面設定、課金設定、secret実値の閲覧・編集。
+
+この例外での外部反映は、migrationレビューと必要なローカル検証の完了後に、現在のスレッドで人間が明示承認した場合だけ許可する。反映手段は承認済みの `supabase db push` または同等のCI migration jobに限定し、VercelへのGit pushがSupabase schemaを自動反映するとは扱わない。
 
 ### Runtime, Generated, And Dependency Artifacts
 
@@ -173,8 +196,8 @@ Observed path examples:
 
 次に該当する作業は、Loop が自律的に実行せず human gate に送る。判定は原則としてファイル単位ではなく、変更差分が影響する機能境界で判断する。
 
-- Google OAuth / Supabase Auth / role / permission / JWT / callback URL / redirect origin / RLS に影響する。
-- DB schema、Supabase project、RLS、storage、Edge Function、server-side persistence に影響する。
+- Google OAuth / Supabase Auth / role / permission / JWT / callback URL / redirect origin / RLS に影響する。ただし「Scoped Exception: User Provider Credentials And Auth Role Provisioning」の全条件を満たす初期 `user` ロール付与は、承認済みscope内で実装できる。
+- DB schema、Supabase project、RLS、storage、Edge Function、server-side persistence に影響する。ただし「Scoped Exception: User Provider Credentials And Auth Role Provisioning」の全条件を満たす資格情報マッピング、Vault連携、最小権限RLS/RPCは、承認済みscope内で実装できる。
 - OpenAI、Anthropic、STT provider、LLM model、provider credential、provider cost、quota、rate limit に影響する。
 - 音声、文字起こし、AIカード、LLM入出力、Session Report の保存・保持・ログ・export・暗号化に影響する。
 - AIカードの上限なしスクロール表示、1回のLLM候補3件上限、優先度制御、重要語/曖昧表現判定、LLM発火条件に影響する。
@@ -184,8 +207,8 @@ Observed path examples:
 
 ## Ticket And Pattern Constraints
 
-- Orchestrator Agent は raw human request を直接実行しない。
-- 実行対象は AI-readable な AI Work Ticket に限る。
+- Orchestrator Agent は raw human request を直接実行しない。ただし、「Scoped Exception: User Provider Credentials And Auth Role Provisioning」の全条件、及び `loop-human-gates.md` の `credential_and_role_provisioning_gate` が現在のスレッドで人間に明示承認されている場合は、その限定scopeだけをAI-readableな実行対象として扱える。
+- 実行対象は AI-readable な AI Work Ticket に限る。ただし、上記の限定例外は、記録済みのgate内容と現在のスレッドの人間承認をAI Work Ticket及びActivation Recordの代替として扱える。branch作成、push、PR、merge、deployにはこの代替を使えない。
 - AI Work Ticket の構造不足、仕様未確定、受け入れ基準不足がある場合は実装へ進まない。
 - 各ticketはRed Team確認条件を網羅するテストケースを持つ。
 - 各ticketはQA Agent、Tester Agent、Verifier Agentの証跡を持つ。

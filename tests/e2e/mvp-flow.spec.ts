@@ -11,8 +11,6 @@ test("runs the MVP login setup session report flow", async ({ page }) => {
   await page.getByRole("button", { name: "セッション開始" }).click();
 
   await expect(page.getByRole("heading", { name: "要件定義" })).toBeVisible();
-  await page.getByRole("button", { name: "音声接続開始" }).click();
-  await page.getByRole("button", { name: "ダミー文字起こし開始" }).click();
 
   await expect(page.getByLabel("文字起こし")).toContainText("承認者");
   await expect(page.getByLabel("AI補助カード")).toContainText("確認");

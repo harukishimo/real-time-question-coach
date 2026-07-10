@@ -5,6 +5,10 @@ import { POST as postReport } from "@/app/api/report/route";
 import { POST as postSession } from "@/app/api/session/init/route";
 import { POST as postSttToken } from "@/app/api/stt-token/route";
 import { GET as getDiagnostics } from "@/app/api/diagnostics/route";
+import {
+  GET as getOpenAiCredential,
+  PUT as putOpenAiCredential
+} from "@/app/api/provider-credential/openai/route";
 import { countCardsByStatus } from "@/lib/coach-card";
 import { createSessionProfile } from "@/lib/session-profile";
 import { providerRateLimiter } from "@/lib/security";
@@ -40,11 +44,15 @@ function existingCoachCard(index: number, score: number): CoachCard {
   };
 }
 
-function apiRequest(body: unknown, headers?: Record<string, string>): NextRequest {
+function apiRequest(
+  body: unknown,
+  headers?: Record<string, string>,
+  method = "POST"
+): NextRequest {
   return new Request("http://localhost/api/test", {
-    method: "POST",
+    method,
     headers: headers ?? { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
+    ...(method === "GET" ? {} : { body: JSON.stringify(body) })
   }) as unknown as NextRequest;
 }
 
@@ -70,10 +78,23 @@ describe("api routes", () => {
       postCoach(apiRequest({})),
       postReport(apiRequest({})),
       postSttToken(apiRequest({ audioSource: "dummy", sessionId: "session-unauth" })),
-      getDiagnostics(apiRequest(null))
+      getDiagnostics(apiRequest(null)),
+      getOpenAiCredential(apiRequest(null, undefined, "GET"))
     ]);
 
-    expect(responses.map((response) => response.status)).toEqual([401, 401, 401, 401, 401]);
+    expect(responses.map((response) => response.status)).toEqual([401, 401, 401, 401, 401, 401]);
+  });
+
+  it("returns only credential configuration status and never a raw API key", async () => {
+    const rawApiKey = "sk-test-credential-value-never-returned";
+    const response = await putOpenAiCredential(
+      apiRequest({ apiKey: rawApiKey }, authHeaders, "PUT")
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({ provider: "openai", configured: true, updatedAt: null });
+    expect(JSON.stringify(body)).not.toContain(rawApiKey);
   });
 
   it("rejects dev auth headers unless DEV_AUTH_ENABLED is explicitly true", async () => {

@@ -255,6 +255,8 @@ Session Setup
 | AUTH-004 | 文字起こし本文、AIカード本文、会議後レポート、音声ファイルを認証DBに保存しない。 |
 | AUTH-005 | 権限は最初は `owner` / `user` 程度の最小構成とし、個人利用でも将来の拡張に備える。 |
 | AUTH-006 | Supabase を使う場合は Row Level Security 等により、ユーザーが自分の認証・設定データだけ扱えるようにする。 |
+| AUTH-007 | `owner` または `user` はserver-controlled app metadataだけで付与し、user-editable metadataを権限根拠にしない。 |
+| AUTH-008 | 利用者は現在のブラウザセッションからログアウトできる。 |
 
 ### 10.2 Session Setup
 
@@ -278,6 +280,8 @@ Session Setup
 | FR-011 | `partial transcript` は左ペインに暫定表示する。 |
 | FR-012 | `final transcript` は確定表示し、会話バッファへ追加する。 |
 | FR-013 | STT接続前の初期実装では、ダミー文字起こしでカード生成を検証できる。 |
+| FR-033 | `セッション開始` 後、選択済み音声ソースへの接続を自動開始する。ブラウザのpermission modelは迂回しない。 |
+| FR-034 | 利用者向け画面では診断ボタンとダミー文字起こし開始ボタンを表示しない。dummy source選択時はテスト文字起こしを自動開始する。 |
 
 ### 10.4 AIカード生成
 

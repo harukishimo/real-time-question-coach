@@ -14,7 +14,9 @@ MVPでは Browser memory を基本にする。
 - JSON export
 - browser local save
 
-現時点の実装では、browser local save は `localStorage` を使う。IndexedDBはMVP必須範囲に含めない。将来、大きなsession payload、複数session管理、削除UI、暗号化local storeが必要になった場合に別ticketで検討する。
+現時点の実装では、browser local save は `localStorage` を使う。保存値は `schemaVersion: 2`, `ownerUserId`, `savedAt`, `payload` を持ち、認証済みユーザーIDが一致するデータだけをSession Setupの保存済み一覧から再表示・削除できる。旧owner専用実装のversionなしJSON payloadは、ownerログイン時だけ現在のowner IDへ移行する。IndexedDBはMVP必須範囲に含めない。将来、大きなsession payload、暗号化local storeが必要になった場合に別ticketで検討する。
+
+ローカル保存対象は `sessionProfile`, final transcript, coach cards, Session Reportであり、音声ファイルは含めない。ブラウザのサイトデータ削除、または保存済み一覧の削除操作で消去される。
 
 サーバーDBへ保存しないもの:
 

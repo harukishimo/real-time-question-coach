@@ -16,7 +16,7 @@ L2 / L3 実行では、Orchestrator Agent、Implementation Agent、Verifier Agen
 | `docs/loop-execution-contract.md` | L2 / L3 の実行順序、branch、verification、run-log |
 | `docs/codecommit-pr-contract.md` | PR 作成と reviewer comment 投稿の条件 |
 
-Deny list と human gate が重なる場合は、deny list を優先する。deny list に該当する場合、human approval があっても自律実行しない。
+Deny list と human gate が重なる場合は、deny list を優先する。deny list に該当する場合、human approval があっても自律実行しない。ただし `loop-constraints.md` の「Scoped Exception: User Provider Credentials And Auth Role Provisioning」の全条件を満たす場合は、その限定scopeを approved として扱う。
 
 ## Read Timing
 
@@ -79,6 +79,22 @@ pre_implementation_human_gate:
 - 実装に外部 service、production、secret、DB mutation、deploy、release、real provider execution が必要。
 - path ではなく機能影響として認証、認可、会話データ保存、STT、LLM、暗号化、ログ、export、deploy に影響する。
 
+ただし、`loop-constraints.md` の「Scoped Exception: User Provider Credentials And Auth Role Provisioning」の適用を申請する場合は、次をすべて記録して人間が承認したときに限り、上記のDB mutation及び初期 `user` ロール付与を approved と扱える。
+
+```yaml
+credential_and_role_provisioning_gate:
+  scope: user_provider_credentials / Vault mapping / initial app_metadata.role=user only
+  migration_paths: exact new forward-only migration paths
+  schema: allowed tables, columns, constraints, RLS, and RPC names
+  secret_handling: raw key is Vault-only; never returned to browser or logged
+  authorization: users can access only their own credential mapping; no self-service role change
+  excluded_data: no audio, transcript, card, LLM input/output, or report persistence
+  verification: unit, API, RLS/security, and relevant E2E checks
+  reflection: human-approved supabase db push or approved CI migration job
+  rollback: forward-only corrective migration; no destructive rollback
+  approver: human identity and explicit approval location
+```
+
 ## Post-Implementation Human Gate Check
 
 実装後、verifier handoff 前に次を確認する。
@@ -117,6 +133,8 @@ post_implementation_human_gate:
 - protected route / protected API / middleware / auth header contract。
 - mock auth と real auth の切り替え条件。
 
+例外として、`loop-constraints.md` の「Scoped Exception: User Provider Credentials And Auth Role Provisioning」の全条件と上記gate記録を満たす場合のみ、初回ログインに対して `app_metadata.role = user` をサーバー管理下で付与できる。`user_metadata` の採用、ownerへの自動昇格、既存ユーザーの一括ロール変更は承認済みscope外とする。
+
 ### Supabase DB, RLS, And Server Storage
 
 次に影響する場合は human gate に送る。
@@ -127,6 +145,8 @@ post_implementation_human_gate:
 - browser memory、IndexedDB、Markdown export、JSON export の保存方針。
 
 実データを変更する command は deny list として扱い、自律実行しない。
+
+例外として、`loop-constraints.md` の「Scoped Exception: User Provider Credentials And Auth Role Provisioning」の全条件と上記gate記録を満たす場合のみ、新規の前方互換migration、資格情報マッピング、Vault連携、最小権限RLS/RPCを実装できる。実際のSupabase反映は、migration内容の確認後に人間が現在のスレッドで明示承認した場合だけ許可する。
 
 ### STT, Microphone, And Browser Audio
 

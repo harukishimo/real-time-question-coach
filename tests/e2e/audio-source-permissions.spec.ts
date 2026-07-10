@@ -53,7 +53,6 @@ test("microphone source requests getUserMedia before STT token boundary", async 
 
   await page.getByLabel("音声ソース").selectOption("microphone");
   await page.getByRole("button", { name: "セッション開始" }).click();
-  await page.getByRole("button", { name: "音声接続開始" }).click();
 
   await expect(page.getByRole("status")).toContainText("マイクの音声ストリームを取得しました。");
   await expect(page.getByRole("status")).toContainText("Mock STT token ready.");
@@ -134,7 +133,6 @@ test("playwright browser grants microphone permission and exposes an audio strea
 
   await page.getByLabel("音声ソース").selectOption("microphone");
   await page.getByRole("button", { name: "セッション開始" }).click();
-  await page.getByRole("button", { name: "音声接続開始" }).click();
 
   await expect(page.getByRole("status")).toContainText("マイクの音声ストリームを取得しました。");
   await expect(page.getByRole("status")).toContainText("Mock STT token ready.");
@@ -176,7 +174,6 @@ test("browser tab source requests getDisplayMedia and falls back to dummy when d
 
   await page.getByLabel("音声ソース").selectOption("browser_tab");
   await page.getByRole("button", { name: "セッション開始" }).click();
-  await page.getByRole("button", { name: "音声接続開始" }).click();
 
   await expect(page.getByRole("status")).toContainText(
     "Webタブ音声の権限が拒否されたため、ダミー文字起こしへ切り替えました。"
@@ -194,7 +191,6 @@ test("system audio source shows unsupported fallback when display capture is una
 
   await page.getByLabel("音声ソース").selectOption("system_audio");
   await page.getByRole("button", { name: "セッション開始" }).click();
-  await page.getByRole("button", { name: "音声接続開始" }).click();
 
   await expect(page.getByRole("status")).toContainText(
     "システム音声はこのブラウザで利用できないため、ダミー文字起こしへ切り替えました。"
