@@ -169,6 +169,7 @@ export function RealtimeQuestionCoachApp() {
   const [sttActive, setSttActive] = useState(false);
   const [savedSessions, setSavedSessions] = useState<LocalSessionSummary[]>([]);
   const [openAiApiKey, setOpenAiApiKey] = useState("");
+  const [showApiKey, setShowApiKey] = useState(false);
   const [savingCredential, setSavingCredential] = useState(false);
   const [credentialRequired, setCredentialRequired] = useState(false);
   const [statusMessage, setStatusMessage] = useState("Google OAuth adapter is using local mock fallback.");
@@ -291,6 +292,7 @@ export function RealtimeQuestionCoachApp() {
         apiKey: openAiApiKey
       });
       setOpenAiApiKey("");
+      setShowApiKey(false);
       setCredentialRequired(false);
       setScreen("setup");
       setStatusMessage("OpenAI APIキーを安全に保存しました。");
@@ -320,6 +322,7 @@ export function RealtimeQuestionCoachApp() {
     setReport(null);
     setSavedSessions([]);
     setOpenAiApiKey("");
+    setShowApiKey(false);
     setSavingCredential(false);
     setCredentialRequired(false);
     setScreen("login");
@@ -818,38 +821,91 @@ export function RealtimeQuestionCoachApp() {
       ) : null}
 
       {screen === "credential" ? (
-        <section className="login-view" aria-labelledby="credential-title">
-          <div className="login-copy">
-            <p className="eyebrow">OpenAI</p>
-            <h2 id="credential-title">OpenAI APIキーを設定</h2>
-            <p>
-              あなたのOpenAI APIキーを設定してください。キー本体は表示・保存し直さず、暗号化されたVaultにのみ保存します。
+        <section className="credential-view" aria-labelledby="credential-title">
+          <div className="credential-card">
+            <div className="credential-card-header">
+              <div className="credential-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <path d="M7.5 10.5V8a4.5 4.5 0 0 1 9 0v2.5" />
+                  <rect x="4.5" y="10.5" width="15" height="10" rx="2.5" />
+                  <path d="M12 14.25v2.5" />
+                </svg>
+              </div>
+              <div>
+                <p className="eyebrow">Provider settings</p>
+                <h2 id="credential-title">OpenAI APIキー</h2>
+              </div>
+              <span className="credential-status">暗号化保存</span>
+            </div>
+
+            <p className="credential-lead">
+              あなたのキーを登録すると、会話中の文字起こしと質問カード生成を利用できます。
             </p>
+
+            <div className="credential-security-note" role="note">
+              <span className="security-dot" aria-hidden="true" />
+              <span>キー本体は画面に再表示せず、Supabase Vaultに暗号化して保存します。</span>
+            </div>
+
+            <form
+              className="credential-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void saveCredential();
+              }}
+            >
+              <div className="credential-field">
+                <div className="credential-label-row">
+                  <label htmlFor="openai-api-key">APIキー</label>
+                  <span>必須</span>
+                </div>
+                <div className="secret-input-wrap">
+                  <input
+                    className="credential-input"
+                    id="openai-api-key"
+                    name="openai-api-key"
+                    type={showApiKey ? "text" : "password"}
+                    value={openAiApiKey}
+                    placeholder="sk-…"
+                    autoComplete="new-password"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    minLength={20}
+                    maxLength={512}
+                    aria-describedby="openai-api-key-help"
+                    onChange={(event) => setOpenAiApiKey(event.target.value)}
+                  />
+                  <button
+                    className="secret-toggle"
+                    type="button"
+                    aria-label={showApiKey ? "APIキーを隠す" : "APIキーを表示"}
+                    onClick={() => setShowApiKey((visible) => !visible)}
+                  >
+                    {showApiKey ? "隠す" : "表示"}
+                  </button>
+                </div>
+                <p className="credential-help" id="openai-api-key-help">
+                  OpenAIのAPIキーを入力してください。入力内容はログやブラウザ保存には残りません。
+                </p>
+              </div>
+
+              <button
+                className="primary-action credential-submit"
+                type="submit"
+                disabled={savingCredential || !openAiApiKey.trim()}
+              >
+                {savingCredential ? "保存中…" : "安全に保存して続行"}
+                {!savingCredential ? <span aria-hidden="true">→</span> : null}
+              </button>
+            </form>
+
+            {!credentialRequired ? (
+              <button className="credential-back" type="button" onClick={() => setScreen("setup")}>
+                会話前の設定へ戻る
+              </button>
+            ) : null}
           </div>
-          <label className="wide-field" htmlFor="openai-api-key">
-            OpenAI APIキー
-            <input
-              id="openai-api-key"
-              type="password"
-              value={openAiApiKey}
-              autoComplete="off"
-              spellCheck={false}
-              onChange={(event) => setOpenAiApiKey(event.target.value)}
-            />
-          </label>
-          <button
-            className="primary-action"
-            type="button"
-            disabled={savingCredential || !openAiApiKey.trim()}
-            onClick={() => void saveCredential()}
-          >
-            {savingCredential ? "保存中…" : "保存して続行"}
-          </button>
-          {!credentialRequired ? (
-            <button type="button" onClick={() => setScreen("setup")}>
-              会話前の設定へ戻る
-            </button>
-          ) : null}
         </section>
       ) : null}
 

@@ -219,6 +219,217 @@ textarea {
   line-height: 1.7;
 }
 
+.credential-view {
+  width: min(720px, calc(100vw - 28px));
+  min-height: calc(100vh - 150px);
+  margin: 0 auto;
+  padding: 30px 0 42px;
+  display: grid;
+  place-items: center;
+}
+
+.credential-card {
+  width: 100%;
+  max-width: 640px;
+  padding: clamp(22px, 5vw, 42px);
+  border: 1px solid #dce5e1;
+  border-radius: 22px;
+  background: linear-gradient(145deg, #ffffff 0%, #f8fbfa 100%);
+  box-shadow: 0 22px 60px rgba(31, 77, 85, 0.12), 0 3px 10px rgba(31, 77, 85, 0.05);
+}
+
+.credential-card-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+}
+
+.credential-card-header h2 {
+  margin: 4px 0 0;
+  font-size: clamp(25px, 4vw, 36px);
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+
+.credential-icon {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #b9e1d7;
+  border-radius: 15px;
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.credential-icon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.credential-status {
+  align-self: start;
+  border: 1px solid #b9e1d7;
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: #f0fbf7;
+  color: var(--green);
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.credential-lead {
+  margin: 22px 0 0;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.credential-security-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin: 20px 0 0;
+  padding: 12px 14px;
+  border: 1px solid #d7e9e4;
+  border-radius: 12px;
+  background: #f1faf7;
+  color: #35645b;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.55;
+}
+
+.security-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: #1aaf88;
+  box-shadow: 0 0 0 4px rgba(26, 175, 136, 0.13);
+}
+
+.credential-form {
+  display: grid;
+  gap: 20px;
+  margin-top: 25px;
+}
+
+.credential-field {
+  display: grid;
+  gap: 8px;
+}
+
+.credential-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.credential-label-row label {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.credential-label-row span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 780;
+}
+
+.secret-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.credential-input {
+  width: 100%;
+  min-height: 52px;
+  border: 1px solid #c8d8d3;
+  border-radius: 12px;
+  padding: 0 72px 0 15px;
+  outline: none;
+  background: #ffffff;
+  color: var(--ink);
+  letter-spacing: 0.04em;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.credential-input::placeholder {
+  color: #a5b2ae;
+  letter-spacing: 0.02em;
+}
+
+.credential-input:focus {
+  border-color: var(--green);
+  box-shadow: 0 0 0 4px rgba(8, 118, 111, 0.13);
+}
+
+.secret-toggle {
+  position: absolute;
+  right: 7px;
+  min-height: 36px;
+  border: 0;
+  border-radius: 8px;
+  padding: 0 10px;
+  background: transparent;
+  color: var(--green);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.secret-toggle:hover,
+.secret-toggle:focus-visible {
+  background: var(--green-soft);
+}
+
+.credential-help {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.credential-submit {
+  width: 100%;
+  min-height: 50px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border-radius: 12px;
+  box-shadow: 0 8px 18px rgba(8, 118, 111, 0.18);
+}
+
+.credential-submit span {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.credential-back {
+  display: block;
+  min-height: auto;
+  margin: 18px auto 0;
+  border: 0;
+  padding: 4px 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.credential-back:hover,
+.credential-back:focus-visible {
+  color: var(--green);
+  text-decoration: underline;
+}
+
 .primary-action {
   border-color: var(--green);
   background: var(--green);
@@ -553,5 +764,21 @@ textarea {
 
   .saved-session-actions {
     width: 100%;
+  }
+}
+
+@media (max-width: 520px) {
+  .credential-card {
+    border-radius: 18px;
+  }
+
+  .credential-card-header {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .credential-status {
+    grid-column: 2;
+    justify-self: start;
+    margin-top: -5px;
   }
 }
