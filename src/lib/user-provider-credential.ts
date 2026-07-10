@@ -7,7 +7,10 @@ export type UserProviderCredentialStatus = {
 };
 
 export class UserProviderCredentialError extends Error {
-  constructor(public readonly code: "not_configured" | "operation_failed") {
+  constructor(
+    public readonly code: "not_configured" | "operation_failed",
+    public readonly providerCode?: string
+  ) {
     super(code);
   }
 }
@@ -56,7 +59,7 @@ export async function getOpenAiCredentialStatus(input: {
   const { data, error } = await serviceClient(env).rpc("user_openai_credential_status", {
     p_user_id: input.userId
   });
-  if (error) throw new UserProviderCredentialError("operation_failed");
+  if (error) throw new UserProviderCredentialError("operation_failed", error.code ?? "unknown");
 
   const row = firstRow(data);
   return row
@@ -83,9 +86,9 @@ export async function saveOpenAiCredential(input: {
     p_user_id: input.userId,
     p_api_key: apiKey
   });
-  if (error) throw new UserProviderCredentialError("operation_failed");
+  if (error) throw new UserProviderCredentialError("operation_failed", error.code ?? "unknown");
 
   const row = firstRow(data);
-  if (!row) throw new UserProviderCredentialError("operation_failed");
+  if (!row) throw new UserProviderCredentialError("operation_failed", "invalid_rpc_response");
   return { configured: true, updatedAt: row.updated_at };
 }

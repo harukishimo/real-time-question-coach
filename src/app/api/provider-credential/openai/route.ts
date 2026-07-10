@@ -15,7 +15,15 @@ function credentialError(error: unknown) {
       422
     );
   }
-  return jsonError("credential_operation_failed", "Credential operation could not be completed.", 422);
+  const providerCode =
+    error instanceof UserProviderCredentialError ? error.providerCode : undefined;
+  return jsonError(
+    "credential_operation_failed",
+    providerCode
+      ? `Credential operation could not be completed. Provider error code: ${providerCode}.`
+      : "Credential operation could not be completed.",
+    422
+  );
 }
 
 export async function GET(request: NextRequest) {
