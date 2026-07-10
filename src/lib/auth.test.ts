@@ -2,6 +2,22 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { canUseOwnerSettings, requireApiUser, resolveServerControlledRole } from "@/lib/auth";
 import { validateOAuthCallbackUrl } from "@/lib/oauth-callback";
 
+const supabaseAuthMocks = vi.hoisted(() => ({
+  getUser: vi.fn(),
+  updateUserById: vi.fn()
+}));
+
+vi.mock("@supabase/supabase-js", () => ({
+  createClient: vi.fn(() => ({
+    auth: {
+      getUser: supabaseAuthMocks.getUser,
+      admin: {
+        updateUserById: supabaseAuthMocks.updateUserById
+      }
+    }
+  }))
+}));
+
 function headers(input: Record<string, string>) {
   return new Headers(input);
 }
@@ -9,6 +25,7 @@ function headers(input: Record<string, string>) {
 describe("auth and OAuth boundaries", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
+    vi.clearAllMocks();
   });
 
   it("allows local dev mock auth only when both local gates are enabled", async () => {
@@ -143,5 +160,53 @@ describe("auth and OAuth boundaries", () => {
         }
       })
     ).toBeNull();
+  });
+
+  it("assigns the initial user role through server-controlled app metadata", async () => {
+    vi.stubEnv("NEXT_PUBLIC_RQC_AUTH_MODE", "supabase");
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.supabase.co");
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "anon-key");
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "service-role-key");
+    supabaseAuthMocks.getUser.mockResolvedValue({
+      data: {
+        user: {
+          id: "google-user-1",
+          email: "user@example.com",
+          app_metadata: { provider: "google" },
+          user_metadata: { role: "owner" }
+        }
+      },
+      error: null
+    });
+    supabaseAuthMocks.updateUserById.mockResolvedValue({
+      data: {
+        user: {
+          id: "google-user-1",
+          email: "user@example.com",
+          app_metadata: { provider: "google", role: "user" }
+        }
+      },
+      error: null
+    });
+
+    const result = await requireApiUser(
+      headers({
+        Authorization: "Bearer access-token"
+      })
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      user: {
+        id: "google-user-1",
+        role: "user"
+      }
+    });
+    expect(supabaseAuthMocks.updateUserById).toHaveBeenCalledWith("google-user-1", {
+      app_metadata: {
+        provider: "google",
+        role: "user"
+      }
+    });
   });
 });

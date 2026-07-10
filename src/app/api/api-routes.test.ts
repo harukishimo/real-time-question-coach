@@ -4,6 +4,7 @@ import { POST as postCoach } from "@/app/api/coach/route";
 import { POST as postReport } from "@/app/api/report/route";
 import { POST as postSession } from "@/app/api/session/init/route";
 import { POST as postSttToken } from "@/app/api/stt-token/route";
+import { GET as getAuthSession } from "@/app/api/auth/session/route";
 import { GET as getDiagnostics } from "@/app/api/diagnostics/route";
 import {
   GET as getOpenAiCredential,
@@ -78,11 +79,25 @@ describe("api routes", () => {
       postCoach(apiRequest({})),
       postReport(apiRequest({})),
       postSttToken(apiRequest({ audioSource: "dummy", sessionId: "session-unauth" })),
+      getAuthSession(apiRequest(null, undefined, "GET")),
       getDiagnostics(apiRequest(null)),
       getOpenAiCredential(apiRequest(null, undefined, "GET"))
     ]);
 
-    expect(responses.map((response) => response.status)).toEqual([401, 401, 401, 401, 401, 401]);
+    expect(responses.map((response) => response.status)).toEqual([401, 401, 401, 401, 401, 401, 401]);
+  });
+
+  it("returns the server-controlled user role from the auth bootstrap route", async () => {
+    const response = await getAuthSession(apiRequest(null, authHeaders, "GET"));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      user: {
+        id: "dev-user-001",
+        role: "owner",
+        provider: "dev_mock"
+      }
+    });
   });
 
   it("returns only credential configuration status and never a raw API key", async () => {

@@ -9,7 +9,6 @@ import {
 import {
   getBrowserAuthConfig,
   getCurrentSupabaseAccessToken,
-  getCurrentSupabaseUser,
   signInWithGoogleOAuth,
   signOutCurrentSession
 } from "@/lib/auth-client";
@@ -200,6 +199,27 @@ export function RealtimeQuestionCoachApp() {
       return;
     }
 
+    let authenticatedUser: AuthUser;
+    try {
+      const session = await getJson<{ user: AuthUser }>("/api/auth/session");
+      authenticatedUser = session.user;
+    } catch (error) {
+      setScreen("login");
+      setStatusMessage(
+        error instanceof Error && error.message.includes("role_provisioning")
+          ? "ユーザー権限の初期設定に失敗しました。管理者設定を確認してください。"
+          : "Supabase session is not active. Googleでログインし直してください。"
+      );
+      return;
+    }
+
+    setUser(authenticatedUser);
+    try {
+      setSavedSessions(readLocalSessionsForUser(authenticatedUser));
+    } catch {
+      setSavedSessions([]);
+    }
+
     try {
       const credential = await getJson<OpenAiCredentialStatus>("/api/provider-credential/openai");
       if (credential.configured) {
@@ -221,18 +241,7 @@ export function RealtimeQuestionCoachApp() {
   useEffect(() => {
     if (browserAuthConfig.authMode !== "supabase") return;
 
-    void getCurrentSupabaseUser().then((supabaseUser) => {
-      if (!supabaseUser) {
-        setStatusMessage("Supabase session is not active or role metadata is missing.");
-        return;
-      }
-
-      setUser(supabaseUser);
-      try {
-        setSavedSessions(readLocalSessionsForUser(supabaseUser));
-      } catch {
-        setSavedSessions([]);
-      }
+    queueMicrotask(() => {
       void continueAfterAuthentication();
     });
   }, [browserAuthConfig.authMode, continueAfterAuthentication]);

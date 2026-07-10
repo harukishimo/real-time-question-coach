@@ -14,7 +14,7 @@ export type AuthResult =
     }
   | {
       ok: false;
-      status: 401 | 403;
+      status: 401 | 403 | 503;
       code: string;
       message: string;
     };
@@ -29,6 +29,10 @@ function roleFromMetadata(metadata: Record<string, unknown> | undefined): UserRo
   return normalizeRole(metadata.role);
 }
 
+function hasExplicitAppRole(metadata: Record<string, unknown> | undefined): boolean {
+  return Boolean(metadata && Object.prototype.hasOwnProperty.call(metadata, "role") && metadata.role != null);
+}
+
 export function resolveServerControlledRole(input: {
   appMetadata?: Record<string, unknown>;
   userMetadata?: Record<string, unknown>;
@@ -36,6 +40,64 @@ export function resolveServerControlledRole(input: {
   const role = roleFromMetadata(input.appMetadata);
   if (role === "owner" || role === "user") return role;
   return null;
+}
+
+async function provisionInitialUserRole(input: {
+  userId: string;
+  appMetadata: Record<string, unknown> | undefined;
+  supabaseUrl: string;
+  env: NodeJS.ProcessEnv;
+}): Promise<
+  | { ok: true; role: "user" }
+  | { ok: false; code: "role_provisioning_not_configured" | "role_provisioning_failed"; message: string }
+> {
+  if (hasExplicitAppRole(input.appMetadata)) {
+    return {
+      ok: false,
+      code: "role_provisioning_failed",
+      message: "Supabase user role is not a supported application role."
+    };
+  }
+
+  const serviceRoleKey = input.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  if (!serviceRoleKey) {
+    return {
+      ok: false,
+      code: "role_provisioning_not_configured",
+      message: "Supabase server role provisioning is not configured."
+    };
+  }
+
+  try {
+    const admin = createClient(input.supabaseUrl, serviceRoleKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
+    });
+    const { data, error } = await admin.auth.admin.updateUserById(input.userId, {
+      app_metadata: {
+        ...(input.appMetadata ?? {}),
+        role: "user"
+      }
+    });
+
+    if (error || data.user?.app_metadata?.role !== "user") {
+      return {
+        ok: false,
+        code: "role_provisioning_failed",
+        message: "The default Supabase user role could not be assigned."
+      };
+    }
+
+    return { ok: true, role: "user" };
+  } catch {
+    return {
+      ok: false,
+      code: "role_provisioning_failed",
+      message: "The default Supabase user role could not be assigned."
+    };
+  }
 }
 
 function bearerToken(headers: Headers): string | null {
@@ -140,12 +202,30 @@ export async function requireApiUser(
         appMetadata: data.user.app_metadata,
         userMetadata: data.user.user_metadata
       });
-      if (!role || role === "dev_mock_user") {
+      if (role === "owner" || role === "user") {
+        return {
+          ok: true,
+          user: {
+            id: data.user.id,
+            email: data.user.email ?? "unknown@example.local",
+            role,
+            provider: "google"
+          }
+        };
+      }
+
+      const provisioned = await provisionInitialUserRole({
+        userId: data.user.id,
+        appMetadata: data.user.app_metadata,
+        supabaseUrl: publicConfig.supabaseUrl!,
+        env
+      });
+      if (!provisioned.ok) {
         return {
           ok: false,
-          status: 403,
-          code: "role_not_configured",
-          message: "Supabase user role must be explicitly configured as owner or user."
+          status: provisioned.code === "role_provisioning_not_configured" ? 503 : 403,
+          code: provisioned.code,
+          message: provisioned.message
         };
       }
 
@@ -154,7 +234,7 @@ export async function requireApiUser(
         user: {
           id: data.user.id,
           email: data.user.email ?? "unknown@example.local",
-          role,
+          role: provisioned.role,
           provider: "google"
         }
       };

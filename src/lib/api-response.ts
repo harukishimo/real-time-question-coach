@@ -13,7 +13,7 @@ export function jsonOk<T>(body: T, status = 200) {
 export function jsonError(
   code: string,
   message: string,
-  status: 400 | 401 | 403 | 422 | 429 | 500,
+  status: 400 | 401 | 403 | 422 | 429 | 500 | 503,
   diagnostic?: SafeProviderDiagnostic
 ) {
   const body: ApiErrorBody & { diagnostic?: SafeProviderDiagnostic } = {
