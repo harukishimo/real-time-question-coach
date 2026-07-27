@@ -27,10 +27,11 @@ WHITE = (255, 255, 255)
 
 FONT_REGULAR = "/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc"
 FONT_BOLD = "/System/Library/Fonts/ヒラギノ角ゴシック W6.ttc"
+FONT_SCALE = 1.0
 
 
 def font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
-    return ImageFont.truetype(FONT_BOLD if bold else FONT_REGULAR, size, index=0)
+    return ImageFont.truetype(FONT_BOLD if bold else FONT_REGULAR, max(1, round(size * FONT_SCALE)), index=0)
 
 
 def text(draw: ImageDraw.ImageDraw, xy: tuple[int, int], value: str, size: int,
@@ -130,6 +131,66 @@ class WideDraw:
         else:
             transformed = points
         self.delegate.line(transformed, **kwargs)
+
+
+class HiResWideDraw:
+    """Render the base layout at high resolution before a single final downsample."""
+
+    def __init__(self, delegate: ImageDraw.ImageDraw, scale_x: float = 1.6, render_scale: float = 1.5, center_x: float = 640) -> None:
+        self.delegate = delegate
+        self.scale_x = scale_x
+        self.render_scale = render_scale
+        self.center_x = center_x
+
+    def _x(self, value: float) -> int:
+        return round((self.center_x + (value - self.center_x) * self.scale_x) * self.render_scale)
+
+    def _y(self, value: float) -> int:
+        return round(value * self.render_scale)
+
+    def _point(self, point: tuple[int, int]) -> tuple[int, int]:
+        return (self._x(point[0]), self._y(point[1]))
+
+    def _box(self, box: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
+        return (self._x(box[0]), self._y(box[1]), self._x(box[2]), self._y(box[3]))
+
+    def text(self, xy: tuple[int, int], value: str, **kwargs: object) -> None:
+        self.delegate.text(self._point(xy), value, **kwargs)
+
+    def textbbox(self, xy: tuple[int, int], value: str, **kwargs: object) -> tuple[int, int, int, int]:
+        left, top, right, bottom = self.delegate.textbbox(self._point(xy), value, **kwargs)
+        # pill() expects dimensions in base-layout units, not rendered pixels.
+        return (0, 0, round((right - left) / self.render_scale), round((bottom - top) / self.render_scale))
+
+    def rounded_rectangle(self, box: tuple[int, int, int, int], **kwargs: object) -> None:
+        options = dict(kwargs)
+        if "radius" in options:
+            options["radius"] = round(float(options["radius"]) * self.render_scale)
+        if "width" in options:
+            options["width"] = max(1, round(float(options["width"]) * self.render_scale))
+        self.delegate.rounded_rectangle(self._box(box), **options)
+
+    def rectangle(self, box: tuple[int, int, int, int], **kwargs: object) -> None:
+        self.delegate.rectangle(self._box(box), **kwargs)
+
+    def ellipse(self, box: tuple[int, int, int, int], **kwargs: object) -> None:
+        radius = (box[3] - box[1]) * self.render_scale / 2
+        center_x = self._x((box[0] + box[2]) / 2)
+        center_y = self._y((box[1] + box[3]) / 2)
+        options = dict(kwargs)
+        if "width" in options:
+            options["width"] = max(1, round(float(options["width"]) * self.render_scale))
+        self.delegate.ellipse((round(center_x - radius), round(center_y - radius), round(center_x + radius), round(center_y + radius)), **options)
+
+    def line(self, points: tuple[int, ...], **kwargs: object) -> None:
+        options = dict(kwargs)
+        if "width" in options:
+            options["width"] = max(1, round(float(options["width"]) * self.render_scale))
+        if len(points) == 4:
+            transformed = (self._x(points[0]), self._y(points[1]), self._x(points[2]), self._y(points[3]))
+        else:
+            transformed = points
+        self.delegate.line(transformed, **options)
 
 
 def draw_desktop_shell(draw: ImageDraw.ImageDraw) -> tuple[int, int, int, int]:
@@ -323,34 +384,34 @@ SCENES: Sequence[dict[str, object]] = (
 
 
 def draw_scene(scene: dict[str, object]) -> Image.Image:
-    stage = Image.new("RGB", (WIDTH, HEIGHT), BG)
-    draw = WideDraw(ImageDraw.Draw(stage))
+    global FONT_SCALE
+    render_scale = 1.5
+    FONT_SCALE = render_scale
+    stage = Image.new("RGB", (round(WIDTH * render_scale), round(HEIGHT * render_scale)), BG)
+    draw = HiResWideDraw(ImageDraw.Draw(stage), render_scale=render_scale)
     draw_desktop_shell(draw)
     drawer = scene["draw"]
     assert callable(drawer)
     drawer(draw)
-    # Remove the monitor bezel while preserving the app's proportions.  A slim
-    # toolbar and a tinted canvas restore depth without reintroducing a device frame.
-    screen = stage.crop((229, 177, 1051, 667))
-    available_height = 760
-    scale = available_height / screen.height
-    screen = screen.resize((round(screen.width * scale), available_height), Image.Resampling.LANCZOS)
-    image = Image.new("RGB", (WIDTH, HEIGHT), (228, 237, 232))
-    final_draw = ImageDraw.Draw(image)
-    final_draw.rectangle((0, 0, WIDTH, 58), fill=WHITE)
-    final_draw.line((0, 58, WIDTH, 58), fill=(214, 225, 217), width=1)
+    # Crop the widened app surface and downsample only once to its final size.
+    screen = stage.crop((round(229 * render_scale), round(177 * render_scale), round(1051 * render_scale), round(667 * render_scale)))
+    target_width, target_height = 1500, 848
+    screen = screen.resize((target_width, target_height), Image.Resampling.LANCZOS)
+    FONT_SCALE = 1.0
+    dashboard = Image.new("RGB", (target_width, 940), (228, 237, 232))
+    final_draw = ImageDraw.Draw(dashboard)
+    final_draw.rectangle((0, 0, target_width, 58), fill=WHITE)
+    final_draw.line((0, 58, target_width, 58), fill=(214, 225, 217), width=1)
     text(final_draw, (36, 21), "RQC", 15, fill=GREEN, bold=True)
     text(final_draw, (78, 21), "Realtime Question Coach", 14, fill=INK, bold=True)
-    pill(final_draw, (1033, 14), "LIVE SESSION", GREEN_PALE, fg=GREEN, size=10, pad_x=10, pad_y=5)
-    left = (WIDTH - screen.width) // 2
-    image.paste(screen, (left, 58))
-    # A subtle footer makes the animated state change easier to follow.
-    final_draw = ImageDraw.Draw(image)
-    final_draw.rectangle((0, 842, WIDTH, HEIGHT), fill=(232, 241, 235))
-    final_draw.line((0, 842, WIDTH, 842), fill=(214, 225, 217), width=1)
-    text(final_draw, (36, 862), str(scene["caption"]), 14, fill=INK, bold=True)
-    text(final_draw, (36, 884), "会話の流れに合わせて、画面が更新されます", 10, fill=MUTED)
-    return image
+    pill(final_draw, (1280, 14), "LIVE SESSION", GREEN_PALE, fg=GREEN, size=10, pad_x=10, pad_y=5)
+    dashboard.paste(screen, (0, 58))
+    final_draw = ImageDraw.Draw(dashboard)
+    final_draw.rectangle((0, 906, target_width, 940), fill=(232, 241, 235))
+    final_draw.line((0, 906, target_width, 906), fill=(214, 225, 217), width=1)
+    text(final_draw, (36, 916), str(scene["caption"]), 12, fill=INK, bold=True)
+    text(final_draw, (36, 932), "会話の流れに合わせて、画面が更新されます", 9, fill=MUTED)
+    return dashboard
 
 
 def compose_reference_frame(dashboard: Image.Image, scene: dict[str, object]) -> Image.Image:
