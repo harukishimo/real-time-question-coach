@@ -15,12 +15,17 @@ let outputURL = URL(fileURLWithPath: args[2])
 let width = 1280
 let height = 900
 let fps = 30
-let sceneFrames = 90 // 3 seconds per still
+let sceneFrames = 120 // 4 seconds per still
 let transitionFrames = 12 // 0.4 seconds cross-fade
 
-let slideURLs: [URL] = (0..<7).map {
-    slidesDirectory.appendingPathComponent(String(format: "scene-%02d.png", $0))
-}
+let slideURLs: [URL] = (try! FileManager.default.contentsOfDirectory(
+    at: slidesDirectory,
+    includingPropertiesForKeys: nil,
+    options: [.skipsHiddenFiles]
+)).filter {
+    $0.lastPathComponent.hasPrefix("scene-") && $0.pathExtension.lowercased() == "png"
+}.sorted { $0.lastPathComponent < $1.lastPathComponent }
+guard slideURLs.count >= 2 else { fatalError("At least two scene PNGs are required") }
 
 func loadImage(_ url: URL) -> CGImage {
     guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),

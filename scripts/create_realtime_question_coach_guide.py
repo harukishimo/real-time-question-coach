@@ -1,17 +1,11 @@
 #!/usr/bin/env python3
-"""Create the stills used by the Realtime Question Coach onboarding video.
-
-The visual language follows the supplied Charge Queue mock: a quiet background,
-large explanation on the left, a phone-sized product view in the middle, and a
-numbered journey on the right.  The stills are intentionally self contained so
-the video can be regenerated without the running web app.
-"""
+"""Create the desktop onboarding stills for Realtime Question Coach."""
 
 from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Callable, Sequence
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -27,7 +21,6 @@ BLUE = (44, 100, 151)
 BLUE_PALE = (232, 239, 248)
 AMBER = (198, 140, 42)
 AMBER_PALE = (250, 241, 214)
-RED = (177, 76, 67)
 LINE = (211, 220, 214)
 WHITE = (255, 255, 255)
 
@@ -62,7 +55,7 @@ def wrap(value: str, limit: int) -> list[str]:
 
 
 def paragraph(draw: ImageDraw.ImageDraw, xy: tuple[int, int], value: str, size: int,
-              fill: tuple[int, int, int] = MUTED, limit: int = 18, gap: int = 12) -> None:
+              fill: tuple[int, int, int] = MUTED, limit: int = 18, gap: int = 10) -> None:
     x, y = xy
     for line in wrap(value, limit):
         text(draw, (x, y), line, size, fill=fill)
@@ -77,7 +70,7 @@ def rounded(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int], radius: i
 
 def pill(draw: ImageDraw.ImageDraw, xy: tuple[int, int], label: str,
          fill: tuple[int, int, int], fg: tuple[int, int, int] = INK,
-         size: int = 15, pad_x: int = 14, pad_y: int = 7) -> tuple[int, int, int, int]:
+         size: int = 13, pad_x: int = 12, pad_y: int = 6) -> tuple[int, int, int, int]:
     x, y = xy
     f = font(size, bold=True)
     left, top, right, bottom = draw.textbbox((x, y), label, font=f)
@@ -90,44 +83,52 @@ def pill(draw: ImageDraw.ImageDraw, xy: tuple[int, int], label: str,
 
 def draw_check(draw: ImageDraw.ImageDraw, center: tuple[int, int], color: tuple[int, int, int] = GREEN) -> None:
     x, y = center
-    draw.ellipse((x - 13, y - 13, x + 13, y + 13), fill=color)
-    draw.line((x - 6, y, x - 1, y + 5, x + 8, y - 6), fill=WHITE, width=3, joint="curve")
+    draw.ellipse((x - 11, y - 11, x + 11, y + 11), fill=color)
+    draw.line((x - 5, y, x - 1, y + 4, x + 7, y - 5), fill=WHITE, width=3, joint="curve")
 
 
-def draw_phone_shell(draw: ImageDraw.ImageDraw) -> tuple[int, int, int, int]:
-    outer = (423, 47, 857, 853)
-    rounded(draw, outer, 44, fill=(21, 58, 53))
-    draw.rounded_rectangle((434, 59, 846, 842), radius=36, fill=(241, 245, 242))
-    screen = (446, 73, 834, 828)
-    rounded(draw, screen, 29, fill=WHITE)
-    rounded(draw, (598, 83, 682, 96), 8, fill=(21, 58, 53))
+def draw_desktop_shell(draw: ImageDraw.ImageDraw) -> tuple[int, int, int, int]:
+    """Draw a wide desktop browser window instead of a phone mock."""
+    outer = (355, 108, 925, 694)
+    rounded(draw, outer, 20, fill=(21, 58, 53))
+    window = (368, 121, 912, 681)
+    rounded(draw, window, 14, fill=WHITE)
+    draw.rectangle((368, 121, 912, 165), fill=(240, 245, 241))
+    for x, color in ((390, (227, 127, 111)), (410, (234, 187, 88)), (430, (103, 174, 135))):
+        draw.ellipse((x, 137, x + 10, 147), fill=color)
+    text(draw, (466, 133), "Realtime Question Coach", 14, fill=INK, bold=True)
+    text(draw, (888, 134), "●", 14, fill=GREEN, anchor="mm")
+    screen = (383, 177, 897, 667)
+    rounded(draw, screen, 8, fill=(249, 251, 249))
+    # Monitor stand and base make the desktop context unambiguous.
+    draw.rectangle((626, 694, 654, 759), fill=(21, 58, 53))
+    rounded(draw, (556, 758, 724, 774), 8, fill=(21, 58, 53))
     return screen
 
 
-def draw_phone_header(draw: ImageDraw.ImageDraw, title: str, status: str | None = None) -> None:
-    text(draw, (472, 123), "RQC", 18, fill=GREEN, bold=True)
-    text(draw, (515, 123), title, 16, fill=INK, bold=True)
-    draw.ellipse((788, 114, 812, 138), fill=GREEN_PALE, outline=GREEN, width=1)
-    text(draw, (800, 126), "H", 12, fill=GREEN, bold=True, anchor="mm")
+def draw_app_header(draw: ImageDraw.ImageDraw, title: str, status: str | None = None) -> None:
+    text(draw, (407, 197), "RQC", 15, fill=GREEN, bold=True)
+    text(draw, (450, 197), title, 14, fill=INK, bold=True)
+    draw.ellipse((851, 188, 873, 210), fill=GREEN_PALE, outline=GREEN, width=1)
+    text(draw, (862, 199), "H", 11, fill=GREEN, bold=True, anchor="mm")
     if status:
-        pill(draw, (474, 151), status, GREEN_PALE, fg=GREEN, size=12, pad_x=10, pad_y=5)
+        pill(draw, (407, 220), status, GREEN_PALE, fg=GREEN, size=10, pad_x=9, pad_y=4)
 
 
 def draw_steps(draw: ImageDraw.ImageDraw, active: int | None) -> None:
     steps = [
-        "ログインする",
-        "APIキーを設定",
-        "会話を準備",
-        "音声で話す",
-        "AIカードを確認",
+        "会話タイプ・目的を設定",
+        "音声接続を開始",
+        "文字起こしを確認",
+        "AIカードで深掘り",
         "レポートを保存",
     ]
-    x = 965
-    text(draw, (x, 168), "HOW IT WORKS", 13, fill=MUTED, bold=True)
+    x = 1000
+    text(draw, (x, 170), "HOW IT WORKS", 13, fill=MUTED, bold=True)
     for index, label in enumerate(steps, 1):
-        y = 232 + (index - 1) * 94
+        y = 236 + (index - 1) * 103
         if index < len(steps):
-            draw.line((x + 17, y + 30, x + 17, y + 92), fill=LINE, width=2)
+            draw.line((x + 16, y + 31, x + 16, y + 101), fill=LINE, width=2)
         is_active = active == index
         if active is None or index < (active or 99):
             fill, outline, fg = GREEN, GREEN, WHITE
@@ -135,156 +136,155 @@ def draw_steps(draw: ImageDraw.ImageDraw, active: int | None) -> None:
             fill, outline, fg = INK, INK, WHITE
         else:
             fill, outline, fg = WHITE, LINE, MUTED
-        draw.ellipse((x, y, x + 34, y + 34), fill=fill, outline=outline, width=2)
-        text(draw, (x + 17, y + 17), f"{index:02}", 10, fill=fg, bold=True, anchor="mm")
-        text(draw, (x + 51, y + 8), label, 17, fill=INK if is_active else MUTED, bold=is_active)
-
-
-def draw_login(draw: ImageDraw.ImageDraw) -> None:
-    draw_phone_header(draw, "ようこそ")
-    text(draw, (640, 250), "Realtime", 26, fill=INK, bold=True, anchor="mm")
-    text(draw, (640, 285), "Question Coach", 26, fill=GREEN, bold=True, anchor="mm")
-    text(draw, (640, 340), "会話中の聞き漏れを減らし、\n次に聞く質問を提案します。", 14, fill=MUTED, anchor="ma")
-    rounded(draw, (493, 429, 787, 483), 13, fill=GREEN)
-    text(draw, (640, 456), "Googleでログイン", 16, fill=WHITE, bold=True, anchor="mm")
-    rounded(draw, (493, 504, 787, 558), 13, fill=WHITE, outline=LINE, width=2)
-    text(draw, (640, 531), "メールアドレスで続ける", 15, fill=INK, anchor="mm")
-    text(draw, (640, 610), "初回ログイン後に、あなたの設定を保存します。", 12, fill=MUTED, anchor="mm")
-
-
-def draw_credentials(draw: ImageDraw.ImageDraw) -> None:
-    draw_phone_header(draw, "初回設定")
-    text(draw, (475, 215), "AIを使う準備", 22, fill=INK, bold=True)
-    text(draw, (475, 252), "APIキーは暗号化して保存されます。", 12, fill=MUTED)
-    text(draw, (475, 324), "OpenAI API key", 12, fill=MUTED, bold=True)
-    rounded(draw, (474, 349, 806, 406), 10, fill=(248, 250, 248), outline=LINE, width=2)
-    text(draw, (493, 377), "sk-••••••••••••••••", 16, fill=INK)
-    draw.ellipse((776, 368, 798, 390), fill=GREEN_PALE)
-    draw.line((783, 379, 789, 385, 797, 373), fill=GREEN, width=2)
-    text(draw, (475, 435), "あとからユーザー設定で変更できます。", 12, fill=MUTED)
-    rounded(draw, (474, 507, 806, 560), 11, fill=GREEN)
-    text(draw, (640, 534), "保存して続ける", 15, fill=WHITE, bold=True, anchor="mm")
-    pill(draw, (474, 605), "SECURE", GREEN_PALE, fg=GREEN, size=11, pad_x=10, pad_y=5)
-    text(draw, (578, 614), "キーの値は画面に再表示されません", 11, fill=MUTED)
+        draw.ellipse((x, y, x + 32, y + 32), fill=fill, outline=outline, width=2)
+        text(draw, (x + 16, y + 16), f"{index:02}", 9, fill=fg, bold=True, anchor="mm")
+        text(draw, (x + 48, y + 7), label, 16, fill=INK if is_active else MUTED, bold=is_active)
 
 
 def draw_setup(draw: ImageDraw.ImageDraw) -> None:
-    draw_phone_header(draw, "セッション設定")
-    text(draw, (475, 203), "どんな会話ですか？", 21, fill=INK, bold=True)
-    text(draw, (475, 238), "目的を選ぶと、質問の方向が揃います。", 12, fill=MUTED)
+    draw_app_header(draw, "セッション設定")
+    text(draw, (407, 270), "会話の目的を選ぶ", 20, fill=INK, bold=True)
+    text(draw, (407, 300), "目的が決まると、質問の方向も揃います。", 11, fill=MUTED)
     for i, label in enumerate(("要件定義", "商談", "1on1")):
-        box = (474 + i * 106, 286, 568 + i * 106, 326)
-        rounded(draw, box, 10, fill=GREEN_PALE if i == 0 else WHITE, outline=GREEN if i == 0 else LINE, width=2)
-        text(draw, ((box[0] + box[2]) // 2, 306), label, 12, fill=GREEN if i == 0 else MUTED, bold=i == 0, anchor="mm")
-    text(draw, (475, 376), "今回のゴール", 12, fill=MUTED, bold=True)
-    rounded(draw, (474, 400, 806, 453), 9, fill=(248, 250, 248), outline=LINE, width=2)
-    text(draw, (493, 427), "MVPで確認すべき要件を整理する", 13, fill=INK)
-    text(draw, (475, 493), "参加者（任意）", 12, fill=MUTED, bold=True)
-    rounded(draw, (474, 517, 806, 570), 9, fill=(248, 250, 248), outline=LINE, width=2)
-    text(draw, (493, 544), "プロダクト担当 / 顧客担当", 13, fill=INK)
-    rounded(draw, (474, 629, 806, 682), 11, fill=GREEN)
-    text(draw, (640, 656), "セッションを開始", 15, fill=WHITE, bold=True, anchor="mm")
+        box = (407 + i * 101, 335, 494 + i * 101, 371)
+        rounded(draw, box, 9, fill=GREEN_PALE if i == 0 else WHITE, outline=GREEN if i == 0 else LINE, width=2)
+        text(draw, ((box[0] + box[2]) // 2, 353), label, 11, fill=GREEN if i == 0 else MUTED, bold=i == 0, anchor="mm")
+    text(draw, (407, 405), "今回のゴール", 11, fill=MUTED, bold=True)
+    rounded(draw, (407, 427, 744, 470), 8, fill=WHITE, outline=LINE, width=2)
+    text(draw, (421, 449), "MVPで確認すべき要件を整理する", 11, fill=INK)
+    text(draw, (407, 504), "参加者（任意）", 11, fill=MUTED, bold=True)
+    rounded(draw, (407, 526, 744, 569), 8, fill=WHITE, outline=LINE, width=2)
+    text(draw, (421, 548), "プロダクト担当 / 顧客担当", 11, fill=INK)
+    rounded(draw, (407, 606, 744, 652), 9, fill=GREEN)
+    text(draw, (575, 629), "セッションを開始", 13, fill=WHITE, bold=True, anchor="mm")
+    rounded(draw, (766, 270, 872, 652), 10, fill=(240, 246, 242), outline=LINE, width=1)
+    text(draw, (784, 291), "設定内容", 11, fill=MUTED, bold=True)
+    for y, label, value in ((335, "タイプ", "要件定義"), (401, "目的", "MVPの整理"), (467, "音声", "ブラウザマイク")):
+        text(draw, (784, y), label, 10, fill=MUTED)
+        text(draw, (784, y + 22), value, 11, fill=INK, bold=True)
 
 
 def transcript_line(draw: ImageDraw.ImageDraw, y: int, speaker: str, value: str, color: tuple[int, int, int]) -> None:
-    draw.ellipse((476, y + 3, 494, y + 21), fill=color)
-    text(draw, (503, y), speaker, 10, fill=color, bold=True)
-    text(draw, (503, y + 20), value, 11, fill=INK)
+    draw.ellipse((407, y + 2, 423, y + 18), fill=color)
+    text(draw, (431, y - 1), speaker, 9, fill=color, bold=True)
+    text(draw, (431, y + 17), value, 10, fill=INK)
 
 
 def draw_live(draw: ImageDraw.ImageDraw) -> None:
-    draw_phone_header(draw, "要件定義", status="音声接続中")
-    text(draw, (475, 213), "リアルタイム文字起こし", 16, fill=INK, bold=True)
-    transcript_line(draw, 259, "あなた", "MVPの範囲をまず決めたいです。", BLUE)
-    transcript_line(draw, 333, "相手", "権限まわりは、管理者だけで良さそうです。", GREEN)
-    draw.line((474, 412, 806, 412), fill=LINE, width=1)
-    pill(draw, (474, 437), "AI補助カード", BLUE_PALE, fg=BLUE, size=12, pad_x=10, pad_y=5)
-    rounded(draw, (474, 492, 806, 634), 10, fill=(250, 252, 251), outline=(181, 203, 224), width=2)
-    text(draw, (493, 517), "権限の確認", 14, fill=INK, bold=True)
-    paragraph(draw, (493, 550), "管理者以外は、どこまで操作できますか？", 12, fill=INK, limit=24, gap=5)
-    rounded(draw, (493, 596, 570, 623), 7, fill=GREEN)
-    text(draw, (531, 609), "聞いた", 10, fill=WHITE, bold=True, anchor="mm")
-    rounded(draw, (580, 596, 646, 623), 7, fill=WHITE, outline=LINE, width=1)
-    text(draw, (613, 609), "あとで", 10, fill=MUTED, anchor="mm")
-    text(draw, (474, 698), "会話中に定期更新", 11, fill=MUTED)
-    draw.ellipse((780, 698, 792, 710), fill=GREEN)
+    draw_app_header(draw, "要件定義", status="音声接続中")
+    rounded(draw, (407, 270, 640, 648), 9, fill=WHITE, outline=LINE, width=1)
+    rounded(draw, (651, 270, 872, 648), 9, fill=WHITE, outline=LINE, width=1)
+    text(draw, (423, 292), "リアルタイム文字起こし", 13, fill=INK, bold=True)
+    transcript_line(draw, 331, "あなた", "MVPの範囲をまず決めたいです。", BLUE)
+    transcript_line(draw, 399, "相手", "権限まわりは管理者だけで良さそうです。", GREEN)
+    transcript_line(draw, 467, "あなた", "例外のときはどうしますか？", BLUE)
+    draw.line((423, 532, 624, 532), fill=LINE, width=1)
+    text(draw, (423, 552), "話した内容を自動で整理", 10, fill=MUTED)
+    text(draw, (667, 292), "AI補助カード", 13, fill=INK, bold=True)
+    rounded(draw, (667, 333, 856, 484), 9, fill=(250, 252, 251), outline=(181, 203, 224), width=2)
+    text(draw, (681, 353), "権限の確認", 12, fill=INK, bold=True)
+    paragraph(draw, (681, 384), "管理者以外は、どこまで操作できますか？", 10, fill=INK, limit=20, gap=4)
+    rounded(draw, (681, 438, 738, 463), 6, fill=GREEN)
+    text(draw, (710, 450), "聞いた", 9, fill=WHITE, bold=True, anchor="mm")
+    rounded(draw, (746, 438, 805, 463), 6, fill=WHITE, outline=LINE, width=1)
+    text(draw, (775, 450), "あとで", 9, fill=MUTED, anchor="mm")
+    text(draw, (667, 544), "音声接続中", 10, fill=GREEN, bold=True)
+    draw.ellipse((835, 542, 847, 554), fill=GREEN)
 
 
 def draw_cards(draw: ImageDraw.ImageDraw) -> None:
-    draw_phone_header(draw, "AI補助カード")
-    text(draw, (475, 203), "次に聞く質問", 21, fill=INK, bold=True)
-    text(draw, (475, 238), "未確認の論点をもとに提案します。", 12, fill=MUTED)
+    draw_app_header(draw, "AI補助カード")
+    text(draw, (407, 270), "次に聞く質問", 20, fill=INK, bold=True)
+    text(draw, (407, 301), "未確認の論点をもとに提案します。", 11, fill=MUTED)
     for y, title, question, tone in (
-        (292, "期限の確認", "いつまでに、何を決めますか？", AMBER),
-        (462, "例外条件", "想定外のケースはありますか？", BLUE),
+        (345, "期限の確認", "いつまでに、何を決めますか？", AMBER),
+        (493, "例外条件", "想定外のケースはありますか？", BLUE),
     ):
-        rounded(draw, (474, y, 806, y + 136), 10, fill=WHITE, outline=LINE, width=2)
-        draw.rectangle((474, y, 481, y + 136), fill=tone)
-        text(draw, (495, y + 20), title, 14, fill=INK, bold=True)
-        paragraph(draw, (495, y + 55), question, 12, fill=INK, limit=21, gap=4)
-        pill(draw, (495, y + 101), "未確認", AMBER_PALE if tone == AMBER else BLUE_PALE,
-             fg=AMBER if tone == AMBER else BLUE, size=10, pad_x=9, pad_y=4)
-    text(draw, (475, 750), "カードは聞いた／あとで／不要で整理できます。", 11, fill=MUTED)
+        rounded(draw, (407, y, 744, y + 112), 9, fill=WHITE, outline=LINE, width=2)
+        draw.rectangle((407, y, 413, y + 112), fill=tone)
+        text(draw, (428, y + 17), title, 12, fill=INK, bold=True)
+        paragraph(draw, (428, y + 47), question, 10, fill=INK, limit=20, gap=4)
+        pill(draw, (428, y + 81), "未確認", AMBER_PALE if tone == AMBER else BLUE_PALE,
+             fg=AMBER if tone == AMBER else BLUE, size=9, pad_x=8, pad_y=4)
+    rounded(draw, (766, 270, 872, 605), 10, fill=(240, 246, 242), outline=LINE, width=1)
+    text(draw, (784, 292), "カードの使い方", 11, fill=MUTED, bold=True)
+    for i, (label, value) in enumerate((("1", "質問を選ぶ"), ("2", "会話で確認"), ("3", "状態を更新"))):
+        y = 345 + i * 86
+        draw.ellipse((784, y, 808, y + 24), fill=GREEN_PALE, outline=GREEN, width=1)
+        text(draw, (796, y + 12), label, 10, fill=GREEN, bold=True, anchor="mm")
+        text(draw, (820, y + 1), value, 10, fill=INK, bold=True)
+        text(draw, (820, y + 22), "抜け漏れを減らします", 9, fill=MUTED)
 
 
 def draw_report(draw: ImageDraw.ImageDraw) -> None:
-    draw_phone_header(draw, "セッションレポート")
-    text(draw, (475, 203), "会話の振り返り", 21, fill=INK, bold=True)
-    pill(draw, (475, 241), "完了", GREEN_PALE, fg=GREEN, size=11, pad_x=10, pad_y=5)
-    text(draw, (552, 251), "要件定義 / 18分", 12, fill=MUTED)
-    text(draw, (475, 317), "確認できたこと", 12, fill=MUTED, bold=True)
+    draw_app_header(draw, "セッションレポート")
+    text(draw, (407, 270), "会話の振り返り", 20, fill=INK, bold=True)
+    pill(draw, (407, 304), "完了", GREEN_PALE, fg=GREEN, size=10, pad_x=9, pad_y=4)
+    text(draw, (480, 314), "要件定義 / 18分", 11, fill=MUTED)
+    rounded(draw, (407, 359, 592, 606), 9, fill=WHITE, outline=LINE, width=1)
+    rounded(draw, (608, 359, 744, 606), 9, fill=WHITE, outline=LINE, width=1)
+    text(draw, (423, 381), "確認できたこと", 11, fill=MUTED, bold=True)
     for i, label in enumerate(("MVPの対象範囲", "管理者の操作", "次回の宿題")):
-        y = 349 + i * 42
-        draw_check(draw, (488, y + 5), GREEN)
-        text(draw, (515, y), label, 12, fill=INK)
-    text(draw, (475, 493), "未確認のこと", 12, fill=MUTED, bold=True)
-    rounded(draw, (474, 525, 806, 580), 9, fill=AMBER_PALE, outline=(234, 208, 147), width=1)
-    text(draw, (493, 543), "例外時の承認フロー", 12, fill=INK, bold=True)
-    text(draw, (493, 563), "次回、最初に確認しましょう", 11, fill=MUTED)
-    rounded(draw, (474, 638, 806, 691), 11, fill=GREEN)
-    text(draw, (640, 665), "レポートを保存", 15, fill=WHITE, bold=True, anchor="mm")
-    rounded(draw, (474, 706, 806, 759), 11, fill=WHITE, outline=LINE, width=2)
-    text(draw, (640, 733), "文字起こしを保存", 14, fill=INK, anchor="mm")
+        y = 423 + i * 42
+        draw_check(draw, (436, y + 3), GREEN)
+        text(draw, (457, y - 5), label, 10, fill=INK)
+    text(draw, (624, 381), "未確認のこと", 11, fill=MUTED, bold=True)
+    rounded(draw, (624, 423, 728, 496), 8, fill=AMBER_PALE, outline=(234, 208, 147), width=1)
+    text(draw, (638, 439), "例外時の承認", 10, fill=INK, bold=True)
+    text(draw, (638, 462), "次回の確認へ", 9, fill=MUTED)
+    rounded(draw, (407, 636, 592, 681), 9, fill=GREEN)
+    text(draw, (500, 658), "レポートを保存", 12, fill=WHITE, bold=True, anchor="mm")
+    rounded(draw, (608, 636, 744, 681), 9, fill=WHITE, outline=LINE, width=2)
+    text(draw, (676, 658), "文字起こしを保存", 11, fill=INK, anchor="mm")
+    rounded(draw, (766, 270, 872, 681), 10, fill=(240, 246, 242), outline=LINE, width=1)
+    text(draw, (784, 292), "保存先", 11, fill=MUTED, bold=True)
+    text(draw, (784, 349), "この端末", 11, fill=INK, bold=True)
+    text(draw, (784, 374), "ブラウザから保存できます", 9, fill=MUTED)
+    text(draw, (784, 455), "サーバーには", 10, fill=MUTED)
+    text(draw, (784, 478), "会話本文を保存しません", 10, fill=INK, bold=True)
 
 
 def draw_finish(draw: ImageDraw.ImageDraw) -> None:
-    draw_phone_header(draw, "次のセッション")
-    text(draw, (640, 235), "準備完了", 26, fill=INK, bold=True, anchor="mm")
-    text(draw, (640, 281), "次の会話も、質問コーチと一緒に。", 13, fill=MUTED, anchor="mm")
-    for i, label in enumerate(("ログイン", "会話の設定", "音声接続", "AIカード", "レポート")):
-        y = 345 + i * 52
-        draw_check(draw, (500, y + 3), GREEN)
-        text(draw, (528, y - 6), label, 14, fill=INK, bold=True)
-        text(draw, (528, y + 17), "いつでも確認できます", 10, fill=MUTED)
-    rounded(draw, (493, 662, 787, 716), 12, fill=GREEN)
-    text(draw, (640, 689), "新しいセッション", 15, fill=WHITE, bold=True, anchor="mm")
+    draw_app_header(draw, "Realtime Question Coach")
+    text(draw, (640, 310), "これだけで、会話の抜け漏れを減らせます", 20, fill=INK, bold=True, anchor="mm")
+    text(draw, (640, 350), "PCブラウザでセッションを開始しましょう。", 12, fill=MUTED, anchor="mm")
+    rounded(draw, (502, 415, 778, 469), 10, fill=GREEN)
+    text(draw, (640, 442), "新しいセッションを始める", 13, fill=WHITE, bold=True, anchor="mm")
+    for i, label in enumerate(("目的を設定", "音声で話す", "AIカードを確認", "レポートを保存")):
+        x = 445 + i * 102
+        draw_check(draw, (x, 544), GREEN)
+        text(draw, (x, 577), label, 10, fill=INK, bold=True, anchor="ma")
 
 
+SceneDrawer = Callable[[ImageDraw.ImageDraw], None]
 SCENES: Sequence[dict[str, object]] = (
-    {"eyebrow": "WELCOME GUIDE", "title": "会話前に3分で準備", "body": "はじめての方も、画面の案内に沿って進めるだけ。", "active": 1, "draw": draw_login},
-    {"eyebrow": "01 / ACCOUNT", "title": "まずはログイン", "body": "アカウントを作成して、あなた専用の設定を始めます。", "active": 1, "draw": draw_credentials},
-    {"eyebrow": "02 / SETUP", "title": "会話の目的を選ぶ", "body": "目的が決まると、AIが出す質問の方向も揃います。", "active": 3, "draw": draw_setup},
-    {"eyebrow": "03 / LIVE", "title": "音声をつなぐ", "body": "話した内容はリアルタイムに文字起こしされます。", "active": 4, "draw": draw_live},
-    {"eyebrow": "04 / COACH", "title": "次に聞く質問が届く", "body": "未確認の論点をもとに、深掘り質問を提案します。", "active": 5, "draw": draw_cards},
-    {"eyebrow": "05 / FINISH", "title": "終わったら、すぐ振り返る", "body": "レポートで抜け漏れを確認し、必要なら端末に保存できます。", "active": 6, "draw": draw_report},
-    {"eyebrow": "READY TO START", "title": "最初のセッションを始めよう", "body": "ログイン → 設定 → 音声接続。あとはAIに任せられます。", "active": None, "draw": draw_finish},
+    {"eyebrow": "01 / SETUP", "title": "会話の目的を選ぶ", "body": "会話タイプと目的を設定すると、AIの質問が会話に合うようになります。", "active": 1, "draw": draw_setup},
+    {"eyebrow": "02 / LIVE", "title": "音声をつなぐ", "body": "PCブラウザの音声接続を開始すると、話した内容が画面に流れます。", "active": 2, "draw": draw_live},
+    {"eyebrow": "03 / TRANSCRIPT", "title": "文字起こしを確認", "body": "左側で会話の流れを追いながら、右側の補助カードを確認できます。", "active": 3, "draw": draw_live},
+    {"eyebrow": "04 / COACH", "title": "質問カードで深掘り", "body": "未確認の論点から、次に聞くべき質問を短いカードで提案します。", "active": 4, "draw": draw_cards},
+    {"eyebrow": "05 / FINISH", "title": "終わったら、すぐ振り返る", "body": "レポートと文字起こしを端末へ保存して、次の会話につなげます。", "active": 5, "draw": draw_report},
+    {"eyebrow": "READY TO START", "title": "最初のセッションを始めよう", "body": "目的を設定 → 音声接続 → AIカード確認。あとは会話に集中できます。", "active": None, "draw": draw_finish},
 )
 
 
 def draw_scene(scene: dict[str, object]) -> Image.Image:
     image = Image.new("RGB", (WIDTH, HEIGHT), BG)
     draw = ImageDraw.Draw(image)
-    # A subtle baseline keeps the composition close to the supplied mock.
     draw.line((66, 808, 1214, 808), fill=LINE, width=1)
     text(draw, (90, 85), str(scene["eyebrow"]), 14, fill=MUTED, bold=True)
-    text(draw, (90, 299), str(scene["title"]), 38, fill=INK, bold=True)
-    paragraph(draw, (90, 365), str(scene["body"]), 18, fill=MUTED, limit=17, gap=10)
+    title_lines = wrap(str(scene["title"]), 8)
+    for line_index, line in enumerate(title_lines):
+        text(draw, (90, 294 + line_index * 42), line, 31, fill=INK, bold=True)
+    paragraph(draw, (90, 365 + (len(title_lines) - 1) * 42), str(scene["body"]), 16, fill=MUTED, limit=14, gap=9)
     text(draw, (90, 731), "Realtime Question Coach", 13, fill=GREEN, bold=True)
     text(draw, (90, 754), "会話の中で、次に聞くべきことを見つける。", 12, fill=MUTED)
-    draw_phone_shell(draw)
-    scene["draw"](draw)  # type: ignore[index]
-    draw_steps(draw, scene["active"] if isinstance(scene["active"], int) else None)
-    pill(draw, (1077, 770), "PRODUCT GUIDE", GREEN_PALE, fg=GREEN, size=10, pad_x=10, pad_y=5)
+    draw_desktop_shell(draw)
+    drawer = scene["draw"]
+    assert callable(drawer)
+    drawer(draw)
+    active = scene["active"]
+    draw_steps(draw, active if isinstance(active, int) else None)
+    pill(draw, (1072, 770), "PRODUCT GUIDE", GREEN_PALE, fg=GREEN, size=10, pad_x=10, pad_y=5)
     return image
 
 
