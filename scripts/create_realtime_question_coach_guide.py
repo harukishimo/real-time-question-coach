@@ -115,32 +115,6 @@ def draw_app_header(draw: ImageDraw.ImageDraw, title: str, status: str | None = 
         pill(draw, (407, 220), status, GREEN_PALE, fg=GREEN, size=10, pad_x=9, pad_y=4)
 
 
-def draw_steps(draw: ImageDraw.ImageDraw, active: int | None) -> None:
-    steps = [
-        "会話タイプ・目的を設定",
-        "音声接続を開始",
-        "文字起こしを確認",
-        "AIカードで深掘り",
-        "レポートを保存",
-    ]
-    x = 1000
-    text(draw, (x, 170), "HOW IT WORKS", 13, fill=MUTED, bold=True)
-    for index, label in enumerate(steps, 1):
-        y = 236 + (index - 1) * 103
-        if index < len(steps):
-            draw.line((x + 16, y + 31, x + 16, y + 101), fill=LINE, width=2)
-        is_active = active == index
-        if active is None or index < (active or 99):
-            fill, outline, fg = GREEN, GREEN, WHITE
-        elif is_active:
-            fill, outline, fg = INK, INK, WHITE
-        else:
-            fill, outline, fg = WHITE, LINE, MUTED
-        draw.ellipse((x, y, x + 32, y + 32), fill=fill, outline=outline, width=2)
-        text(draw, (x + 16, y + 16), f"{index:02}", 9, fill=fg, bold=True, anchor="mm")
-        text(draw, (x + 48, y + 7), label, 16, fill=INK if is_active else MUTED, bold=is_active)
-
-
 def draw_setup(draw: ImageDraw.ImageDraw) -> None:
     draw_app_header(draw, "セッション設定")
     text(draw, (407, 270), "会話の目的を選ぶ", 20, fill=INK, bold=True)
@@ -170,26 +144,57 @@ def transcript_line(draw: ImageDraw.ImageDraw, y: int, speaker: str, value: str,
     text(draw, (431, y + 17), value, 10, fill=INK)
 
 
-def draw_live(draw: ImageDraw.ImageDraw) -> None:
+def draw_live_stage(draw: ImageDraw.ImageDraw, transcript_count: int, card_count: int) -> None:
+    """Render the live two-pane state; successive stills create visible motion."""
     draw_app_header(draw, "要件定義", status="音声接続中")
     rounded(draw, (407, 270, 640, 648), 9, fill=WHITE, outline=LINE, width=1)
     rounded(draw, (651, 270, 872, 648), 9, fill=WHITE, outline=LINE, width=1)
     text(draw, (423, 292), "リアルタイム文字起こし", 13, fill=INK, bold=True)
-    transcript_line(draw, 331, "あなた", "MVPの範囲をまず決めたいです。", BLUE)
-    transcript_line(draw, 399, "相手", "権限まわりは管理者だけで良さそうです。", GREEN)
-    transcript_line(draw, 467, "あなた", "例外のときはどうしますか？", BLUE)
-    draw.line((423, 532, 624, 532), fill=LINE, width=1)
-    text(draw, (423, 552), "話した内容を自動で整理", 10, fill=MUTED)
+    transcript = (
+        ("あなた", "MVPの範囲をまず決めたいです。", BLUE),
+        ("相手", "権限まわりは管理者だけで良さそうです。", GREEN),
+        ("あなた", "例外のときはどうしますか？", BLUE),
+    )
+    for index, (speaker, value, color) in enumerate(transcript[:transcript_count]):
+        transcript_line(draw, 331 + index * 68, speaker, value, color)
+    divider_y = 331 + max(transcript_count, 1) * 68 + 6
+    draw.line((423, divider_y, 624, divider_y), fill=LINE, width=1)
+    text(draw, (423, divider_y + 19), "話した内容を自動で整理", 10, fill=MUTED)
     text(draw, (667, 292), "AI補助カード", 13, fill=INK, bold=True)
-    rounded(draw, (667, 333, 856, 484), 9, fill=(250, 252, 251), outline=(181, 203, 224), width=2)
-    text(draw, (681, 353), "権限の確認", 12, fill=INK, bold=True)
-    paragraph(draw, (681, 384), "管理者以外は、どこまで操作できますか？", 10, fill=INK, limit=20, gap=4)
-    rounded(draw, (681, 438, 738, 463), 6, fill=GREEN)
-    text(draw, (710, 450), "聞いた", 9, fill=WHITE, bold=True, anchor="mm")
-    rounded(draw, (746, 438, 805, 463), 6, fill=WHITE, outline=LINE, width=1)
-    text(draw, (775, 450), "あとで", 9, fill=MUTED, anchor="mm")
-    text(draw, (667, 544), "音声接続中", 10, fill=GREEN, bold=True)
-    draw.ellipse((835, 542, 847, 554), fill=GREEN)
+    if card_count == 0:
+        rounded(draw, (667, 333, 856, 484), 9, fill=(247, 250, 248), outline=LINE, width=1)
+        text(draw, (761, 397), "会話を分析中…", 11, fill=MUTED, anchor="mm")
+        draw.ellipse((752, 423, 770, 441), outline=GREEN, width=2)
+    else:
+        card_data = (
+            ("権限の確認", "管理者以外は、どこまで操作できますか？", BLUE),
+            ("例外条件", "想定外のケースはありますか？", AMBER),
+        )
+        for index, (title, question, tone) in enumerate(card_data[:card_count]):
+            y = 333 + index * 155
+            rounded(draw, (667, y, 856, y + 136), 9, fill=(250, 252, 251), outline=(181, 203, 224), width=2)
+            draw.rectangle((667, y, 673, y + 136), fill=tone)
+            text(draw, (681, y + 20), title, 11, fill=INK, bold=True)
+            paragraph(draw, (681, y + 49), question, 10, fill=INK, limit=18, gap=4)
+            rounded(draw, (681, y + 100, 738, y + 125), 6, fill=GREEN)
+            text(draw, (710, y + 112), "聞いた", 9, fill=WHITE, bold=True, anchor="mm")
+            rounded(draw, (746, y + 100, 805, y + 125), 6, fill=WHITE, outline=LINE, width=1)
+            text(draw, (775, y + 112), "あとで", 9, fill=MUTED, anchor="mm")
+    status_y = 632 if card_count == 2 else 612
+    text(draw, (667, status_y), "音声接続中", 10, fill=GREEN, bold=True)
+    draw.ellipse((835, status_y - 2, 847, status_y + 10), fill=GREEN)
+
+
+def draw_live_initial(draw: ImageDraw.ImageDraw) -> None:
+    draw_live_stage(draw, transcript_count=1, card_count=0)
+
+
+def draw_live_one_card(draw: ImageDraw.ImageDraw) -> None:
+    draw_live_stage(draw, transcript_count=2, card_count=1)
+
+
+def draw_live_two_cards(draw: ImageDraw.ImageDraw) -> None:
+    draw_live_stage(draw, transcript_count=3, card_count=2)
 
 
 def draw_cards(draw: ImageDraw.ImageDraw) -> None:
@@ -258,33 +263,31 @@ def draw_finish(draw: ImageDraw.ImageDraw) -> None:
 
 SceneDrawer = Callable[[ImageDraw.ImageDraw], None]
 SCENES: Sequence[dict[str, object]] = (
-    {"eyebrow": "01 / SETUP", "title": "会話の目的を選ぶ", "body": "会話タイプと目的を設定すると、AIの質問が会話に合うようになります。", "active": 1, "draw": draw_setup},
-    {"eyebrow": "02 / LIVE", "title": "音声をつなぐ", "body": "PCブラウザの音声接続を開始すると、話した内容が画面に流れます。", "active": 2, "draw": draw_live},
-    {"eyebrow": "03 / TRANSCRIPT", "title": "文字起こしを確認", "body": "左側で会話の流れを追いながら、右側の補助カードを確認できます。", "active": 3, "draw": draw_live},
-    {"eyebrow": "04 / COACH", "title": "質問カードで深掘り", "body": "未確認の論点から、次に聞くべき質問を短いカードで提案します。", "active": 4, "draw": draw_cards},
-    {"eyebrow": "05 / FINISH", "title": "終わったら、すぐ振り返る", "body": "レポートと文字起こしを端末へ保存して、次の会話につなげます。", "active": 5, "draw": draw_report},
-    {"eyebrow": "READY TO START", "title": "最初のセッションを始めよう", "body": "目的を設定 → 音声接続 → AIカード確認。あとは会話に集中できます。", "active": None, "draw": draw_finish},
+    {"caption": "会話の目的を設定", "draw": draw_setup},
+    {"caption": "音声接続を開始", "draw": draw_live_initial},
+    {"caption": "文字起こしが流れる", "draw": draw_live_one_card},
+    {"caption": "右側に質問カードが表示", "draw": draw_live_two_cards},
+    {"caption": "レポートを保存", "draw": draw_report},
+    {"caption": "次の会話へ", "draw": draw_finish},
 )
 
 
 def draw_scene(scene: dict[str, object]) -> Image.Image:
     image = Image.new("RGB", (WIDTH, HEIGHT), BG)
-    draw = ImageDraw.Draw(image)
-    draw.line((66, 808, 1214, 808), fill=LINE, width=1)
-    text(draw, (90, 85), str(scene["eyebrow"]), 14, fill=MUTED, bold=True)
-    title_lines = wrap(str(scene["title"]), 8)
-    for line_index, line in enumerate(title_lines):
-        text(draw, (90, 294 + line_index * 42), line, 31, fill=INK, bold=True)
-    paragraph(draw, (90, 365 + (len(title_lines) - 1) * 42), str(scene["body"]), 16, fill=MUTED, limit=14, gap=9)
-    text(draw, (90, 731), "Realtime Question Coach", 13, fill=GREEN, bold=True)
-    text(draw, (90, 754), "会話の中で、次に聞くべきことを見つける。", 12, fill=MUTED)
+    stage = Image.new("RGB", (WIDTH, HEIGHT), BG)
+    draw = ImageDraw.Draw(stage)
     draw_desktop_shell(draw)
     drawer = scene["draw"]
     assert callable(drawer)
     drawer(draw)
-    active = scene["active"]
-    draw_steps(draw, active if isinstance(active, int) else None)
-    pill(draw, (1072, 770), "PRODUCT GUIDE", GREEN_PALE, fg=GREEN, size=10, pad_x=10, pad_y=5)
+    # Enlarge the product surface so the live transcript/card changes are the focus.
+    crop = stage.crop((330, 80, 950, 800)).resize((744, 864), Image.Resampling.LANCZOS)
+    image.paste(crop, (268, 18))
+    final_draw = ImageDraw.Draw(image)
+    text(final_draw, (72, 62), "Realtime Question Coach", 16, fill=GREEN, bold=True)
+    text(final_draw, (72, 86), "PCブラウザでの操作イメージ", 11, fill=MUTED)
+    text(final_draw, (72, 838), str(scene["caption"]), 14, fill=INK, bold=True)
+    draw.line((72, 865, 1208, 865), fill=LINE, width=1)
     return image
 
 
