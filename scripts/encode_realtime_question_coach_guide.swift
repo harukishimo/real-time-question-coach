@@ -45,7 +45,7 @@ let settings: [String: Any] = [
     AVVideoWidthKey: width,
     AVVideoHeightKey: height,
     AVVideoCompressionPropertiesKey: [
-        AVVideoAverageBitRateKey: 5_000_000,
+        AVVideoAverageBitRateKey: 10_000_000,
         AVVideoExpectedSourceFrameRateKey: fps,
         AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
     ],

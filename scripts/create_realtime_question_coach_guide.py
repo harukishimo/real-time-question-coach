@@ -358,9 +358,9 @@ def compose_reference_frame(dashboard: Image.Image, scene: dict[str, object]) ->
     image = Image.new("RGB", (OUTPUT_WIDTH, OUTPUT_HEIGHT), (239, 243, 237))
     draw = ImageDraw.Draw(image)
     pill(draw, (62, 88), "PRODUCT GUIDE", GREEN_PALE, fg=GREEN, size=13, pad_x=14, pad_y=7)
-    text(draw, (62, 205), "リアルタイム", 47, fill=INK, bold=True)
-    text(draw, (62, 260), "質問コーチ", 47, fill=INK, bold=True)
-    paragraph(draw, (62, 352), "会話中の文字起こしとAI補助カードで、次に聞くべき質問を見つける。", 18, fill=MUTED, limit=13, gap=11)
+    text(draw, (62, 205), "リアルタイム", 42, fill=INK, bold=True)
+    text(draw, (62, 257), "質問コーチ", 42, fill=INK, bold=True)
+    paragraph(draw, (62, 345), "会話中の文字起こしとAI補助カードで、次に聞くべき質問を見つける。", 17, fill=MUTED, limit=13, gap=10)
     for index, label in enumerate(("セッション設定", "文字起こし", "AI補助カード", "レポート保存")):
         y = 678 + index * 46
         draw.ellipse((63, y + 4, 76, y + 17), fill=GREEN)
