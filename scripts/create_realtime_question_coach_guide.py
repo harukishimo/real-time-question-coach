@@ -88,6 +88,50 @@ def draw_check(draw: ImageDraw.ImageDraw, center: tuple[int, int], color: tuple[
     draw.line((x - 5, y, x - 1, y + 4, x + 7, y - 5), fill=WHITE, width=3, joint="curve")
 
 
+class WideDraw:
+    """Coordinate adapter that widens the product surface without stretching text."""
+
+    def __init__(self, delegate: ImageDraw.ImageDraw, scale_x: float = 1.6, center_x: float = 640) -> None:
+        self.delegate = delegate
+        self.scale_x = scale_x
+        self.center_x = center_x
+
+    def _x(self, value: float) -> int:
+        return round(self.center_x + (value - self.center_x) * self.scale_x)
+
+    def _point(self, point: tuple[int, int]) -> tuple[int, int]:
+        return (self._x(point[0]), point[1])
+
+    def _box(self, box: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
+        return (self._x(box[0]), box[1], self._x(box[2]), box[3])
+
+    def text(self, xy: tuple[int, int], value: str, **kwargs: object) -> None:
+        self.delegate.text(self._point(xy), value, **kwargs)
+
+    def textbbox(self, xy: tuple[int, int], value: str, **kwargs: object) -> tuple[int, int, int, int]:
+        left, top, right, bottom = self.delegate.textbbox(self._point(xy), value, **kwargs)
+        return (left, top, right, bottom)
+
+    def rounded_rectangle(self, box: tuple[int, int, int, int], **kwargs: object) -> None:
+        self.delegate.rounded_rectangle(self._box(box), **kwargs)
+
+    def rectangle(self, box: tuple[int, int, int, int], **kwargs: object) -> None:
+        self.delegate.rectangle(self._box(box), **kwargs)
+
+    def ellipse(self, box: tuple[int, int, int, int], **kwargs: object) -> None:
+        # Status dots and speaker markers remain circular after the horizontal layout expansion.
+        radius = (box[3] - box[1]) / 2
+        center_x = self._x((box[0] + box[2]) / 2)
+        self.delegate.ellipse((round(center_x - radius), box[1], round(center_x + radius), box[3]), **kwargs)
+
+    def line(self, points: tuple[int, ...], **kwargs: object) -> None:
+        if len(points) == 4:
+            transformed = (self._x(points[0]), points[1], self._x(points[2]), points[3])
+        else:
+            transformed = points
+        self.delegate.line(transformed, **kwargs)
+
+
 def draw_desktop_shell(draw: ImageDraw.ImageDraw) -> tuple[int, int, int, int]:
     """Draw a wide desktop browser window instead of a phone mock."""
     outer = (355, 108, 925, 694)
@@ -280,15 +324,15 @@ SCENES: Sequence[dict[str, object]] = (
 
 def draw_scene(scene: dict[str, object]) -> Image.Image:
     stage = Image.new("RGB", (WIDTH, HEIGHT), BG)
-    draw = ImageDraw.Draw(stage)
+    draw = WideDraw(ImageDraw.Draw(stage))
     draw_desktop_shell(draw)
     drawer = scene["draw"]
     assert callable(drawer)
     drawer(draw)
     # Remove the monitor bezel while preserving the app's proportions.  A slim
     # toolbar and a tinted canvas restore depth without reintroducing a device frame.
-    screen = stage.crop((383, 177, 897, 667))
-    available_height = 784
+    screen = stage.crop((229, 177, 1051, 667))
+    available_height = 760
     scale = available_height / screen.height
     screen = screen.resize((round(screen.width * scale), available_height), Image.Resampling.LANCZOS)
     image = Image.new("RGB", (WIDTH, HEIGHT), (228, 237, 232))
