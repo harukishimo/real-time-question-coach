@@ -273,22 +273,14 @@ SCENES: Sequence[dict[str, object]] = (
 
 
 def draw_scene(scene: dict[str, object]) -> Image.Image:
-    image = Image.new("RGB", (WIDTH, HEIGHT), BG)
     stage = Image.new("RGB", (WIDTH, HEIGHT), BG)
     draw = ImageDraw.Draw(stage)
     draw_desktop_shell(draw)
     drawer = scene["draw"]
     assert callable(drawer)
     drawer(draw)
-    # Enlarge the product surface so the live transcript/card changes are the focus.
-    crop = stage.crop((330, 80, 950, 800)).resize((744, 864), Image.Resampling.LANCZOS)
-    image.paste(crop, (268, 18))
-    final_draw = ImageDraw.Draw(image)
-    text(final_draw, (72, 62), "Realtime Question Coach", 16, fill=GREEN, bold=True)
-    text(final_draw, (72, 86), "PCブラウザでの操作イメージ", 11, fill=MUTED)
-    text(final_draw, (72, 838), str(scene["caption"]), 14, fill=INK, bold=True)
-    draw.line((72, 865, 1208, 865), fill=LINE, width=1)
-    return image
+    # Remove the monitor bezel entirely and show the product surface edge-to-edge.
+    return stage.crop((383, 177, 897, 667)).resize((WIDTH, HEIGHT), Image.Resampling.LANCZOS)
 
 
 def main() -> None:
