@@ -15,7 +15,7 @@ let outputURL = URL(fileURLWithPath: args[2])
 let width = 1920
 let height = 1080
 let fps = 30
-let sceneFrames = 150 // 5 seconds per still
+let sceneFrames = 120 // 4 seconds per still
 let transitionFrames = 12 // 0.4 seconds cross-fade
 
 let slideURLs: [URL] = (try! FileManager.default.contentsOfDirectory(
