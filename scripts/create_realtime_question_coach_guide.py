@@ -125,9 +125,9 @@ def draw_app_nav(draw: ImageDraw.ImageDraw, active: str) -> None:
         text(draw, (x, 86), label, 15, fill=WHITE if label == active else (177, 194, 202), bold=label == active)
         if label == active:
             draw.rectangle((x, 121, x + 74, 124), fill=(78, 174, 151))
-    rounded(draw, (1663, 78, 1828, 117), 19, fill=(21, 57, 82))
-    dot(draw, (1690, 98), (116, 182, 221), 11)
-    text(draw, (1711, 87), "操作中", 12, fill=WHITE, bold=True)
+    rounded(draw, (1584, 78, 1788, 117), 19, fill=(21, 57, 82))
+    dot(draw, (1612, 98), (116, 182, 221), 11)
+    text(draw, (1633, 87), "操作中", 12, fill=WHITE, bold=True)
 
 
 def draw_app_surface(draw: ImageDraw.ImageDraw, active: str, renderer: Callable[[ImageDraw.ImageDraw], None]) -> None:
@@ -298,9 +298,9 @@ def draw_final(draw: ImageDraw.ImageDraw) -> None:
     text(draw, (410, 207), "決定事項・未確認論点・担当と期限を、そのまま持ち帰れます。", 14, fill=MUTED)
     rounded(draw, (404, 270, 1800, 924), 16, fill=SURFACE, outline=LINE, width=1)
     cards = (
-        (520, "決定事項", "一般ユーザーは閲覧のみ", GREEN),
-        (950, "未確認論点", "閲覧範囲: 自部署 / 全社", AMBER),
-        (1380, "アクション", "田中: 代替承認者を7/25まで", BLUE),
+        (640, "決定事項", "一般ユーザーは閲覧のみ", GREEN),
+        (1100, "未確認論点", "閲覧範囲: 自部署 / 全社", AMBER),
+        (1560, "アクション", "田中: 代替承認者を7/25まで", BLUE),
     )
     for x, heading, value, tone in cards:
         rounded(draw, (x - 170, 380, x + 170, 585), 14, fill=WHITE, outline=LINE, width=1)
