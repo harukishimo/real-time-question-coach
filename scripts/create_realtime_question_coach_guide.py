@@ -99,7 +99,7 @@ def draw_desktop_shell(draw: ImageDraw.ImageDraw) -> tuple[int, int, int, int]:
     text(draw, (466, 133), "Realtime Question Coach", 14, fill=INK, bold=True)
     text(draw, (888, 134), "●", 14, fill=GREEN, anchor="mm")
     screen = (383, 177, 897, 667)
-    rounded(draw, screen, 8, fill=(249, 251, 249))
+    rounded(draw, screen, 8, fill=(237, 244, 239), outline=(220, 229, 222), width=1)
     # Monitor stand and base make the desktop context unambiguous.
     draw.rectangle((626, 694, 654, 759), fill=(21, 58, 53))
     rounded(draw, (556, 758, 724, 774), 8, fill=(21, 58, 53))
@@ -147,8 +147,12 @@ def transcript_line(draw: ImageDraw.ImageDraw, y: int, speaker: str, value: str,
 def draw_live_stage(draw: ImageDraw.ImageDraw, transcript_count: int, card_count: int) -> None:
     """Render the live two-pane state; successive stills create visible motion."""
     draw_app_header(draw, "要件定義", status="音声接続中")
-    rounded(draw, (407, 270, 640, 648), 9, fill=WHITE, outline=LINE, width=1)
-    rounded(draw, (651, 270, 872, 648), 9, fill=WHITE, outline=LINE, width=1)
+    rounded(draw, (407, 270, 640, 648), 9, fill=(249, 252, 249), outline=LINE, width=1)
+    rounded(draw, (651, 270, 872, 648), 9, fill=(243, 248, 250), outline=(193, 211, 219), width=1)
+    rounded(draw, (407, 270, 640, 319), 9, fill=(229, 241, 232))
+    draw.rectangle((407, 302, 640, 319), fill=(229, 241, 232))
+    rounded(draw, (651, 270, 872, 319), 9, fill=(228, 237, 246))
+    draw.rectangle((651, 302, 872, 319), fill=(228, 237, 246))
     text(draw, (423, 292), "リアルタイム文字起こし", 13, fill=INK, bold=True)
     transcript = (
         ("あなた", "MVPの範囲をまず決めたいです。", BLUE),
@@ -172,7 +176,8 @@ def draw_live_stage(draw: ImageDraw.ImageDraw, transcript_count: int, card_count
         )
         for index, (title, question, tone) in enumerate(card_data[:card_count]):
             y = 333 + index * 155
-            rounded(draw, (667, y, 856, y + 136), 9, fill=(250, 252, 251), outline=(181, 203, 224), width=2)
+            rounded(draw, (673, y + 5, 862, y + 141), 9, fill=(216, 226, 223))
+            rounded(draw, (667, y, 856, y + 136), 9, fill=(255, 255, 255), outline=(181, 203, 224), width=2)
             draw.rectangle((667, y, 673, y + 136), fill=tone)
             text(draw, (681, y + 20), title, 11, fill=INK, bold=True)
             paragraph(draw, (681, y + 49), question, 10, fill=INK, limit=18, gap=4)
@@ -279,8 +284,28 @@ def draw_scene(scene: dict[str, object]) -> Image.Image:
     drawer = scene["draw"]
     assert callable(drawer)
     drawer(draw)
-    # Remove the monitor bezel entirely and show the product surface edge-to-edge.
-    return stage.crop((383, 177, 897, 667)).resize((WIDTH, HEIGHT), Image.Resampling.LANCZOS)
+    # Remove the monitor bezel while preserving the app's proportions.  A slim
+    # toolbar and a tinted canvas restore depth without reintroducing a device frame.
+    screen = stage.crop((383, 177, 897, 667))
+    available_height = 784
+    scale = available_height / screen.height
+    screen = screen.resize((round(screen.width * scale), available_height), Image.Resampling.LANCZOS)
+    image = Image.new("RGB", (WIDTH, HEIGHT), (228, 237, 232))
+    final_draw = ImageDraw.Draw(image)
+    final_draw.rectangle((0, 0, WIDTH, 58), fill=WHITE)
+    final_draw.line((0, 58, WIDTH, 58), fill=(214, 225, 217), width=1)
+    text(final_draw, (36, 21), "RQC", 15, fill=GREEN, bold=True)
+    text(final_draw, (78, 21), "Realtime Question Coach", 14, fill=INK, bold=True)
+    pill(final_draw, (1033, 14), "LIVE SESSION", GREEN_PALE, fg=GREEN, size=10, pad_x=10, pad_y=5)
+    left = (WIDTH - screen.width) // 2
+    image.paste(screen, (left, 58))
+    # A subtle footer makes the animated state change easier to follow.
+    final_draw = ImageDraw.Draw(image)
+    final_draw.rectangle((0, 842, WIDTH, HEIGHT), fill=(232, 241, 235))
+    final_draw.line((0, 842, WIDTH, 842), fill=(214, 225, 217), width=1)
+    text(final_draw, (36, 862), str(scene["caption"]), 14, fill=INK, bold=True)
+    text(final_draw, (36, 884), "会話の流れに合わせて、画面が更新されます", 10, fill=MUTED)
+    return image
 
 
 def main() -> None:
