@@ -11,6 +11,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 
 WIDTH, HEIGHT = 1280, 900
+OUTPUT_WIDTH, OUTPUT_HEIGHT = 1920, 1080
 BG = (246, 248, 245)
 INK = (28, 51, 48)
 MUTED = (103, 117, 111)
@@ -308,13 +309,39 @@ def draw_scene(scene: dict[str, object]) -> Image.Image:
     return image
 
 
+def compose_reference_frame(dashboard: Image.Image, scene: dict[str, object]) -> Image.Image:
+    """Place the dashboard in the same left-copy / right-product layout as the reference."""
+    image = Image.new("RGB", (OUTPUT_WIDTH, OUTPUT_HEIGHT), (239, 243, 237))
+    draw = ImageDraw.Draw(image)
+    pill(draw, (62, 88), "PRODUCT GUIDE", GREEN_PALE, fg=GREEN, size=13, pad_x=14, pad_y=7)
+    text(draw, (62, 205), "リアルタイム", 47, fill=INK, bold=True)
+    text(draw, (62, 260), "質問コーチ", 47, fill=INK, bold=True)
+    paragraph(draw, (62, 352), "会話中の文字起こしとAI補助カードで、次に聞くべき質問を見つける。", 18, fill=MUTED, limit=13, gap=11)
+    for index, label in enumerate(("セッション設定", "文字起こし", "AI補助カード", "レポート保存")):
+        y = 678 + index * 46
+        draw.ellipse((63, y + 4, 76, y + 17), fill=GREEN)
+        text(draw, (91, y), label, 16, fill=INK, bold=True)
+    text(draw, (62, 930), str(scene["caption"]), 14, fill=GREEN, bold=True)
+    text(draw, (62, 959), "画面の変化を順番に見ていきます", 12, fill=MUTED)
+
+    # Soft shadow and rounded application surface; this is a UI surface, not a monitor bezel.
+    rounded(draw, (347, 69, 1877, 1020), 22, fill=(211, 220, 212))
+    target_width, target_height = 1500, 940
+    dashboard = dashboard.resize((target_width, target_height), Image.Resampling.LANCZOS)
+    mask = Image.new("L", (target_width, target_height), 0)
+    mask_draw = ImageDraw.Draw(mask)
+    mask_draw.rounded_rectangle((0, 0, target_width - 1, target_height - 1), radius=18, fill=255)
+    image.paste(dashboard, (335, 50), mask)
+    return image
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("output", type=Path)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     for index, scene in enumerate(SCENES):
-        draw_scene(scene).save(args.output / f"scene-{index:02d}.png", optimize=True)
+        compose_reference_frame(draw_scene(scene), scene).save(args.output / f"scene-{index:02d}.png", optimize=True)
     print(f"wrote {len(SCENES)} scenes to {args.output}")
 
 

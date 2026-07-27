@@ -12,8 +12,8 @@ guard args.count == 3 else {
 
 let slidesDirectory = URL(fileURLWithPath: args[1], isDirectory: true)
 let outputURL = URL(fileURLWithPath: args[2])
-let width = 1280
-let height = 900
+let width = 1920
+let height = 1080
 let fps = 30
 let sceneFrames = 120 // 4 seconds per still
 let transitionFrames = 12 // 0.4 seconds cross-fade
